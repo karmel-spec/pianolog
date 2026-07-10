@@ -64,11 +64,13 @@ def parse_contacts(path):
     hdr = [h.strip().lower() for h in rows[hdr_i]]
     col = lambda *k: next((i for i, h in enumerate(hdr) if any(x in h for x in k)), None)
     c_name, c_email, c_addr = col('customer full name', 'customer'), col('email'), col('bill address', 'address')
+    c_phone = col('phone')
     for r in rows[hdr_i + 1:]:
         get = lambda i: r[i].strip() if i is not None and i < len(r) else ''
         name = get(c_name)
         if name:
-            contacts[name] = {'email': get(c_email), 'address': get(c_addr)}
+            contacts[name] = {'email': get(c_email), 'address': get(c_addr),
+                              'phone': get(c_phone)}
     return contacts
 
 def latest(recs):
@@ -94,7 +96,7 @@ def main(sales_csv, contacts_csv=None):
         c = contacts.get(custs[0], {})
         entry = {'qb_owner': custs[0], 'qb_sale_date': rec['date'], 'matched_serial': serial,
                  'qb_email': c.get('email', ''), 'qb_address': c.get('address', ''),
-                 'qb_city_state': ''}
+                 'qb_phone': c.get('phone', ''), 'qb_city_state': ''}
         overlay[key] = entry
         digits = re.sub(r'\D', '', serial)
         if digits and digits != key:
