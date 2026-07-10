@@ -1,0 +1,3 @@
+# Data snapshots contain customer contact info (PII) — do not publish.
+# Generate locally with: ./scripts/refresh.sh
+data/

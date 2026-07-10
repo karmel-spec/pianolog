@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Piano Log — Brigham Larson Pianos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#121212;
+    --ink-2:#4a4a4a;
+    --ink-3:#8a8a8a;
+    --red:#9e2020;
+    --red-2:#b43333;
+    --paper:#ffffff;
+    --paper-2:#f6f6f6;
+    --cream:#f9f7ee;
+    --cream-2:#efe5d6;
+    --line:#e6e6e6;
+    --radius:6px;
+    font-size:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Assistant',sans-serif;color:var(--ink);background:var(--paper)}
+  a{color:inherit}
+  button{font-family:inherit}
+
+  /* announcement bar — like the site's top strip */
+  .announce{background:var(--ink);color:#fff;text-align:center;padding:.5rem 1rem;font-size:.8rem;letter-spacing:.12em;text-transform:uppercase}
+  .announce b{color:var(--cream-2);font-weight:600}
+
+  header.site{border-bottom:1px solid var(--line);background:var(--paper);position:sticky;top:0;z-index:40}
+  .site-inner{max-width:1280px;margin:0 auto;padding:.9rem 1.5rem;display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap}
+  .site-inner img.logo{height:56px;width:auto}
+  .site-title{font-size:.78rem;letter-spacing:.22em;text-transform:uppercase;color:var(--ink-2)}
+  .site-title strong{display:block;font-size:1.05rem;letter-spacing:.28em;color:var(--ink);font-weight:600}
+  .refresh-note{margin-left:auto;font-size:.75rem;color:var(--ink-3);text-align:right;line-height:1.5}
+
+  /* the logo's red divider motif */
+  .red-rule{display:flex;align-items:center;gap:0;max-width:1280px;margin:0 auto;padding:0 1.5rem}
+  .red-rule .bar{flex:1;height:2px;background:var(--red)}
+  .red-rule .dot{width:8px;height:8px;border-radius:50%;background:var(--red);margin:0 6px;flex:none}
+
+  main{max-width:1280px;margin:0 auto;padding:2rem 1.5rem 4rem}
+  h2.section-head{font-size:.8rem;letter-spacing:.24em;text-transform:uppercase;font-weight:600;color:var(--ink);margin:2.4rem 0 1rem}
+  h2.section-head:first-child{margin-top:0}
+
+  /* stat tiles */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line)}
+  .tile{background:var(--paper);border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:1.1rem 1.2rem;cursor:pointer;transition:background .15s}
+  .tile:hover{background:var(--cream)}
+  .tile.active{background:var(--cream);box-shadow:inset 0 -3px 0 var(--red)}
+  .tile .num{font-size:1.9rem;font-weight:300;line-height:1.1;font-variant-numeric:tabular-nums}
+  .tile .lbl{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);margin-top:.3rem}
+
+  /* charts */
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin-top:1rem}
+  @media(max-width:860px){.charts{grid-template-columns:1fr}}
+  .chart{border:1px solid var(--line);padding:1.2rem 1.4rem;border-radius:var(--radius)}
+  .chart h3{font-size:.75rem;letter-spacing:.18em;text-transform:uppercase;font-weight:600;margin-bottom:1rem;color:var(--ink-2)}
+  .hbar{display:grid;grid-template-columns:9.5rem 1fr 3.2rem;align-items:center;gap:.55rem;margin-bottom:.45rem;font-size:.85rem}
+  .hbar .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-2);text-align:right}
+  .hbar .track{height:14px;position:relative}
+  .hbar .fill{position:absolute;inset:0 auto 0 0;background:var(--red);border-radius:0 4px 4px 0;min-width:2px;cursor:pointer;transition:background .15s}
+  .hbar .fill:hover{background:var(--red-2)}
+  .hbar .val{font-variant-numeric:tabular-nums;color:var(--ink);font-size:.8rem}
+
+  /* controls */
+  .controls{position:sticky;top:89px;z-index:30;background:var(--paper);padding:.9rem 0;border-bottom:1px solid var(--line);display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
+  .controls input[type=search]{flex:1 1 260px;padding:.6rem .9rem;border:1px solid var(--ink-2);border-radius:var(--radius);font-size:.95rem;font-family:inherit}
+  .controls input[type=search]:focus{outline:2px solid var(--red);outline-offset:1px;border-color:transparent}
+  .controls select{padding:.6rem .7rem;border:1px solid var(--line);border-radius:var(--radius);font-size:.85rem;font-family:inherit;background:var(--paper);color:var(--ink);max-width:230px}
+  .count-line{font-size:.8rem;color:var(--ink-3);margin-left:auto}
+  .clear-btn{border:none;background:none;color:var(--red);font-size:.8rem;letter-spacing:.06em;cursor:pointer;text-decoration:underline;text-underline-offset:3px;display:none}
+  .clear-btn.show{display:inline}
+
+  /* table */
+  table{width:100%;border-collapse:collapse;margin-top:.4rem;font-size:.88rem}
+  thead th{text-align:left;font-size:.68rem;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-2);font-weight:600;padding:.7rem .6rem;border-bottom:2px solid var(--ink);white-space:nowrap;cursor:pointer;user-select:none}
+  thead th .arrow{color:var(--red);font-size:.75rem}
+  tbody td{padding:.65rem .6rem;border-bottom:1px solid var(--line);vertical-align:top}
+  tbody tr{cursor:pointer}
+  tbody tr:hover td{background:var(--cream)}
+  td.summary{font-weight:600;max-width:330px}
+  td .sub{font-weight:400;color:var(--ink-3);font-size:.78rem;margin-top:.15rem}
+  td.serial{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .badge{display:inline-block;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;padding:.15rem .5rem;border-radius:999px;border:1px solid var(--line);color:var(--ink-2);background:var(--paper-2);white-space:nowrap}
+  .badge.sold{background:var(--ink);border-color:var(--ink);color:#fff}
+  .badge.shop{background:var(--red);border-color:var(--red);color:#fff}
+  .badge.showroom{background:var(--cream-2);border-color:var(--cream-2);color:var(--ink)}
+  .more-row{text-align:center;padding:1.2rem}
+  .btn{display:inline-block;background:var(--red);color:#fff;border:none;padding:.7rem 1.8rem;font-size:.85rem;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;border-radius:var(--radius)}
+  .btn:hover{background:var(--red-2)}
+  .empty{padding:3rem;text-align:center;color:var(--ink-3)}
+
+  /* detail drawer */
+  .overlay{position:fixed;inset:0;background:rgba(18,18,18,.45);z-index:60;display:none}
+  .overlay.open{display:block}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:min(560px,100vw);background:var(--paper);z-index:70;transform:translateX(102%);transition:transform .22s ease;overflow-y:auto;box-shadow:-12px 0 40px rgba(0,0,0,.18)}
+  .drawer.open{transform:none}
+  .drawer-head{background:var(--ink);color:#fff;padding:1.6rem 1.6rem 1.3rem;position:sticky;top:0}
+  .drawer-head .close{position:absolute;top:.9rem;right:.9rem;background:none;border:none;color:#fff;font-size:1.5rem;cursor:pointer;line-height:1}
+  .drawer-head .kicker{font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:var(--cream-2)}
+  .drawer-head h3{font-size:1.25rem;font-weight:600;margin:.35rem 0 .2rem}
+  .drawer-head .serial{font-size:.8rem;color:#cfcfcf}
+  .drawer-rule{display:flex;align-items:center;margin-top:.9rem}
+  .drawer-rule .bar{flex:1;height:2px;background:var(--red-2)}
+  .drawer-rule .dot{width:7px;height:7px;border-radius:50%;background:var(--red-2);margin:0 5px}
+  .drawer-body{padding:1.4rem 1.6rem 3rem}
+  .field{margin-bottom:1rem}
+  .field .k{font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);margin-bottom:.2rem}
+  .field .v{font-size:.9rem;white-space:pre-wrap;word-break:break-word}
+  .field .v a{color:var(--red);text-decoration:underline;text-underline-offset:2px}
+  .fields-2{display:grid;grid-template-columns:1fr 1fr;gap:0 1.4rem}
+  .linkchips{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.2rem}
+  .linkchips a{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--red);color:var(--red);padding:.4rem .8rem;border-radius:999px;text-decoration:none}
+  .linkchips a:hover{background:var(--red);color:#fff}
+
+  footer{background:var(--ink);color:#bdbdbd;margin-top:3rem}
+  .foot-inner{max-width:1280px;margin:0 auto;padding:2rem 1.5rem;font-size:.8rem;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+  footer .brand{color:#fff;letter-spacing:.2em;text-transform:uppercase;font-weight:600}
+
+  /* chart tooltip */
+  #tip{position:fixed;pointer-events:none;background:var(--ink);color:#fff;font-size:.78rem;padding:.4rem .6rem;border-radius:4px;z-index:90;display:none;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<div class="announce">Internal Tool &nbsp;·&nbsp; <b>Piano Log &amp; Inventory History</b> &nbsp;·&nbsp; Brigham Larson Pianos</div>
+
+<header class="site">
+  <div class="site-inner">
+    <img class="logo" src="assets/blp-logo.png" alt="Brigham Larson Pianos">
+    <div class="site-title">Inventory History<strong>Piano Log</strong></div>
+    <div class="refresh-note" id="meta-note"></div>
+  </div>
+  <div class="red-rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
+</header>
+
+<main>
+  <h2 class="section-head">At a Glance</h2>
+  <div class="tiles" id="tiles"></div>
+
+  <div class="charts">
+    <div class="chart"><h3>Pianos by Section Group</h3><div id="chart-groups"></div></div>
+    <div class="chart"><h3>Top Makes (All Time)</h3><div id="chart-makes"></div></div>
+  </div>
+
+  <h2 class="section-head">Browse the Log</h2>
+  <div class="controls">
+    <input type="search" id="q" placeholder="Search make, model, serial, owner, notes…" autocomplete="off">
+    <select id="f-group"><option value="">All Groups</option></select>
+    <select id="f-section"><option value="">All Sections</option></select>
+    <select id="f-make"><option value="">All Makes</option></select>
+    <select id="f-category"><option value="">All Project Types</option></select>
+    <button class="clear-btn" id="clear">Clear filters</button>
+    <span class="count-line" id="count"></span>
+  </div>
+
+  <table id="tbl">
+    <thead>
+      <tr>
+        <th data-sort="summary">Piano <span class="arrow"></span></th>
+        <th data-sort="serial">Serial <span class="arrow"></span></th>
+        <th data-sort="year">Year <span class="arrow"></span></th>
+        <th data-sort="section">Section <span class="arrow"></span></th>
+        <th data-sort="project_category">Project <span class="arrow"></span></th>
+        <th data-sort="owner_name">Owner <span class="arrow"></span></th>
+        <th data-sort="entry_exit_dates">Entry / Exit <span class="arrow"></span></th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="more-row" id="more-wrap" style="display:none"><button class="btn" id="more">Show more</button></div>
+  <div class="empty" id="empty" style="display:none">No pianos match — try clearing a filter.</div>
+</main>
+
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer" aria-label="Piano details"></aside>
+<div id="tip"></div>
+
+<footer>
+  <div class="foot-inner">
+    <span class="brand">Brigham Larson Pianos</span>
+    <span>Source of truth: <a href="https://docs.google.com/spreadsheets/d/1ZunbPKygpQlcXfTyPowDHdUE9spJ3uV1XA4iX1eoKRc/edit" target="_blank" style="color:#fff">Piano Log &amp; Inventory sheet</a> · run <code>scripts/refresh.sh</code> to update</span>
+  </div>
+</footer>
+
+<script>
+const PAGE = 100;
+let DATA = null, view = [], shown = PAGE, sortKey = null, sortDir = 1;
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const GROUP_ORDER = ['Shopwork','Showroom','Storage','Rentals & Financing','On Premises','Digital','Web Archive','Sold / Exited','Other'];
+const badgeClass = g => g === 'Sold / Exited' ? 'sold' : g === 'Shopwork' ? 'shop' : g === 'Showroom' ? 'showroom' : '';
+
+fetch('data/pianos.json').then(r => r.json()).then(d => { DATA = d; init(); });
+
+function init(){
+  $('#meta-note').innerHTML = `Snapshot: ${esc(DATA.generated_at)}<br>${DATA.pianos.length.toLocaleString()} pianos · ${DATA.sections.length} sections`;
+
+  const groups = {};
+  DATA.pianos.forEach(p => groups[p.group] = (groups[p.group]||0)+1);
+
+  // stat tiles (click filters by group)
+  const tileDefs = [['', 'Total Logged', DATA.pianos.length]]
+    .concat(GROUP_ORDER.filter(g => groups[g]).map(g => [g, g, groups[g]]));
+  $('#tiles').innerHTML = tileDefs.map(([g,l,n]) =>
+    `<div class="tile" data-group="${esc(g)}"><div class="num">${n.toLocaleString()}</div><div class="lbl">${esc(l)}</div></div>`).join('');
+  $('#tiles').addEventListener('click', e => {
+    const t = e.target.closest('.tile'); if(!t) return;
+    $('#f-group').value = t.dataset.group; $('#f-section').value = '';
+    apply();
+  });
+
+  // charts
+  hbars('#chart-groups', GROUP_ORDER.filter(g=>groups[g]).map(g=>[g,groups[g]]), g => { $('#f-group').value = g; apply(); });
+  const makes = {};
+  DATA.pianos.forEach(p => { const m = (p.make||'').trim(); if(m) makes[m] = (makes[m]||0)+1; });
+  hbars('#chart-makes', Object.entries(makes).sort((a,b)=>b[1]-a[1]).slice(0,12), m => { $('#f-make').value = m; apply(); });
+
+  // filter options
+  fillSelect('#f-group', GROUP_ORDER.filter(g=>groups[g]));
+  fillSelect('#f-section', DATA.sections.map(s=>s.name));
+  fillSelect('#f-make', Object.keys(makes).filter(m=>makes[m]>=3).sort());
+  const cats = [...new Set(DATA.pianos.map(p=>p.project_category.trim()).filter(Boolean))].sort();
+  fillSelect('#f-category', cats.filter(c=>c.length<40));
+
+  ['#q','#f-group','#f-section','#f-make','#f-category'].forEach(s =>
+    $(s).addEventListener('input', apply));
+  $('#clear').addEventListener('click', () => {
+    ['#q','#f-group','#f-section','#f-make','#f-category'].forEach(s => $(s).value='');
+    apply();
+  });
+  $('#more').addEventListener('click', () => { shown += PAGE * 3; render(); });
+
+  document.querySelectorAll('thead th').forEach(th => th.addEventListener('click', () => {
+    const k = th.dataset.sort;
+    if (sortKey === k) { sortDir *= -1; } else { sortKey = k; sortDir = 1; }
+    apply();
+  }));
+
+  $('#overlay').addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', e => { if(e.key==='Escape') closeDrawer(); });
+
+  apply();
+}
+
+function fillSelect(sel, items){
+  $(sel).insertAdjacentHTML('beforeend', items.map(i=>`<option>${esc(i)}</option>`).join(''));
+}
+
+function hbars(sel, pairs, onClick){
+  const max = Math.max(...pairs.map(p=>p[1]));
+  $(sel).innerHTML = pairs.map(([name,n]) =>
+    `<div class="hbar"><span class="name" title="${esc(name)}">${esc(name)}</span>
+     <span class="track"><span class="fill" data-name="${esc(name)}" data-n="${n}" style="width:${Math.max(1.5, n/max*100)}%"></span></span>
+     <span class="val">${n.toLocaleString()}</span></div>`).join('');
+  $(sel).addEventListener('click', e => { const f=e.target.closest('.fill'); if(f) onClick(f.dataset.name); });
+  $(sel).addEventListener('mousemove', e => {
+    const f = e.target.closest('.fill'); const tip = $('#tip');
+    if(!f){ tip.style.display='none'; return; }
+    tip.textContent = `${f.dataset.name}: ${Number(f.dataset.n).toLocaleString()} pianos — click to filter`;
+    tip.style.display='block'; tip.style.left=(e.clientX+12)+'px'; tip.style.top=(e.clientY+12)+'px';
+  });
+  $(sel).addEventListener('mouseleave', () => $('#tip').style.display='none');
+}
+
+function apply(){
+  const q = $('#q').value.trim().toLowerCase();
+  const g = $('#f-group').value, s = $('#f-section').value,
+        m = $('#f-make').value, c = $('#f-category').value;
+  view = DATA.pianos.filter(p =>
+    (!g || p.group===g) && (!s || p.section===s) &&
+    (!m || (p.make||'').trim()===m) && (!c || p.project_category.trim()===c) &&
+    (!q || [p.summary,p.serial,p.make,p.model,p.owner,p.notes,p.year,p.category,p.location_status,p.milestones]
+      .some(v => v && v.toLowerCase().includes(q))));
+  if (sortKey){
+    const num = v => {
+      if (sortKey==='year'){ const m = String(v).match(/\b(1[89]|20)\d{2}\b/); return m ? +m[0] : NaN; }
+      return parseFloat(String(v).replace(/[^\d.-]/g,''));
+    };
+    const isNum = sortKey==='year'||sortKey==='serial';
+    const blank = v => isNum ? isNaN(num(v)) : !String(v||'').trim();
+    view = [...view].sort((a,b)=>{
+      let x=a[sortKey]||'', y=b[sortKey]||'';
+      const bx=blank(x), by=blank(y);
+      if (bx||by) return bx&&by ? 0 : bx ? 1 : -1;  // blanks always last
+      if (isNum) return (num(x)-num(y))*sortDir;
+      return x.localeCompare(y)*sortDir;
+    });
+  }
+  document.querySelectorAll('thead th').forEach(th =>
+    th.querySelector('.arrow').textContent = th.dataset.sort===sortKey ? (sortDir>0?'▲':'▼') : '');
+  const any = q||g||s||m||c;
+  $('#clear').classList.toggle('show', !!any);
+  // active tile highlight
+  document.querySelectorAll('.tile').forEach(t =>
+    t.classList.toggle('active', !q&&!s&&!m&&!c && t.dataset.group===g));
+  shown = PAGE;
+  render();
+}
+
+function render(){
+  $('#count').textContent = `${view.length.toLocaleString()} of ${DATA.pianos.length.toLocaleString()} pianos`;
+  $('#empty').style.display = view.length ? 'none' : 'block';
+  const slice = view.slice(0, shown);
+  $('#rows').innerHTML = slice.map(p => `
+    <tr data-id="${p.id}">
+      <td class="summary">${esc(p.summary || [p.year,p.make,p.model].filter(Boolean).join(' ') || '(no summary)')}
+        ${p.finish?`<div class="sub">${esc(p.finish)}${p.sheen?' · '+esc(p.sheen):''}</div>`:''}</td>
+      <td class="serial">${esc(firstLine(p.serial))}</td>
+      <td>${esc(p.year)}</td>
+      <td><span class="badge ${badgeClass(p.group)}" title="${esc(p.section)}">${esc(shortSection(p.section))}</span></td>
+      <td>${esc(p.project_category)}</td>
+      <td>${esc(p.owner_name)}</td>
+      <td style="white-space:pre-line;font-size:.78rem;color:var(--ink-2)">${esc(p.entry_exit_dates)}</td>
+    </tr>`).join('');
+  $('#more-wrap').style.display = view.length > shown ? 'block' : 'none';
+  $('#rows').onclick = e => {
+    const tr = e.target.closest('tr'); if(!tr) return;
+    openDrawer(DATA.pianos.find(p => p.id == tr.dataset.id));
+  };
+}
+
+const firstLine = s => String(s||'').split('\n')[0];
+const shortSection = s => s.length > 26 ? s.slice(0,24)+'…' : s;
+
+const FIELDS = [
+  ['Section','section'],['Location / Status','location_status'],['Status','status'],
+  ['Project Category','project_category'],['Entry / Exit Dates','entry_exit_dates'],
+  ['Completion Date','completion_date'],['Receiving / Exiting','receiving_exiting'],
+  ['Category Tags','category'],['Finish','finish'],['Sheen','sheen'],['Trim','trim'],
+  ['Bench','bench'],['Published on Web','published'],['COGS / Invoice #','cogs_invoice'],
+  ['Agreements / Finance','agreements_price'],['iSolved Job #','isolved_job'],['QBO','qbo'],
+  ['Down Payment Date','down_payment_date'],['Last Updated','updated_at'],['Sheet Row','sheet_row'],
+];
+
+function linkify(s){
+  return esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+}
+
+function openDrawer(p){
+  if(!p) return;
+  const links = [['Before Photos',p.before_photos],['After Photos',p.after_photos],
+                 ['Before Video',p.before_video],['After Video',p.after_video]]
+    .filter(([,u]) => /^https?:/.test((u||'').trim()));
+  $('#drawer').innerHTML = `
+    <div class="drawer-head">
+      <button class="close" aria-label="Close">×</button>
+      <div class="kicker">${esc(p.section)}</div>
+      <h3>${esc(p.summary || [p.year,p.make,p.model].filter(Boolean).join(' '))}</h3>
+      <div class="serial">Serial ${esc(p.serial)||'—'}</div>
+      <div class="drawer-rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
+    </div>
+    <div class="drawer-body">
+      ${links.length?`<div class="linkchips">${links.map(([l,u])=>`<a href="${esc(u.trim().split(/\s/)[0])}" target="_blank" rel="noopener">${l}</a>`).join('')}</div>`:''}
+      ${p.owner?field('Owner / Contact', p.owner):''}
+      <div class="fields-2">${FIELDS.map(([l,k])=>p[k]?field(l,String(p[k])):'').join('')}</div>
+      ${p.notes?field('Notes', p.notes):''}
+      ${p.milestones?field('Milestones & Project Updates', p.milestones):''}
+      ${p.tags?field('Tags', p.tags):''}
+    </div>`;
+  $('#drawer').querySelector('.close').onclick = closeDrawer;
+  $('#overlay').classList.add('open');
+  $('#drawer').classList.add('open');
+  $('#drawer').scrollTop = 0;
+}
+const field = (k,v) => `<div class="field"><div class="k">${esc(k)}</div><div class="v">${linkify(v)}</div></div>`;
+function closeDrawer(){ $('#overlay').classList.remove('open'); $('#drawer').classList.remove('open'); }
+</script>
+</body>
+</html>
