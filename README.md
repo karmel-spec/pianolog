@@ -31,6 +31,13 @@ in a detail drawer. New tabs added to the sheet appear automatically
 > **Note:** `data/` is not committed — the snapshots contain customer contact
 > info and this repo is public. The server regenerates them on first fetch.
 
+## Password
+
+The app is password-protected (branded sign-in page; session cookie, valid
+until the server restarts). The password is **not** in this repo — it lives in
+`data/password.txt` (gitignored) or the `PIANOLOG_PASSWORD` env var. If
+neither exists, the app runs open with no password.
+
 ## Structure
 
 - `server.py` — live server: static files + `/api/pianos` (gog fetch + parse, 5-min cache, `?force=1` to bypass)

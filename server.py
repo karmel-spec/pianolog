@@ -13,7 +13,8 @@ unreachable.
 Run: python3 server.py   (port 8412)
 Requires: gog authenticated as karmel@brighamlarsonpianos.com
 """
-import http.server, json, os, subprocess, sys, threading, time
+import http.server, json, os, secrets, subprocess, sys, threading, time
+from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts'))
 from parse import parse  # noqa: E402
@@ -25,6 +26,54 @@ RANGE = "'Piano Log'!A1:BA5000"
 ACCOUNT = 'karmel@brighamlarsonpianos.com'
 CACHE_TTL = 300  # seconds
 TABS_TTL = 3600  # tab list changes rarely
+
+def load_password():
+    """Password comes from $PIANOLOG_PASSWORD or data/password.txt (gitignored —
+    never hardcode it here; this file is on public GitHub)."""
+    pw = os.environ.get('PIANOLOG_PASSWORD', '').strip()
+    if pw:
+        return pw
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'password.txt')
+    if os.path.exists(path):
+        with open(path) as f:
+            return f.read().strip()
+    return None
+
+PASSWORD = load_password()
+SESSIONS = set()   # valid session tokens (reset on server restart)
+
+LOGIN_HTML = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — Piano Log</title>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Assistant',sans-serif;background:#121212;min-height:100vh;
+       display:flex;align-items:center;justify-content:center;padding:1.5rem}
+  .card{background:#fff;border-radius:8px;padding:2.5rem 2.2rem;max-width:380px;width:100%;text-align:center}
+  .card img{width:240px;max-width:100%}
+  .rule{display:flex;align-items:center;margin:1.4rem 0}
+  .rule .bar{flex:1;height:2px;background:#9e2020}
+  .rule .dot{width:7px;height:7px;border-radius:50%;background:#9e2020;margin:0 5px}
+  h1{font-size:.8rem;letter-spacing:.24em;text-transform:uppercase;color:#4a4a4a;font-weight:600}
+  input{width:100%;margin-top:1.2rem;padding:.75rem 1rem;font-size:1rem;font-family:inherit;
+        border:1px solid #bbb;border-radius:6px}
+  input:focus{outline:2px solid #9e2020;border-color:transparent}
+  button{width:100%;margin-top:.8rem;padding:.8rem;background:#9e2020;color:#fff;border:none;
+         border-radius:6px;font-size:.9rem;letter-spacing:.14em;text-transform:uppercase;
+         font-family:inherit;cursor:pointer}
+  button:hover{background:#b43333}
+  .err{margin-top:.9rem;color:#9e2020;font-size:.85rem}
+</style></head><body>
+<form class="card" method="post" action="/login">
+  <img src="/assets/blp-logo.png" alt="Brigham Larson Pianos">
+  <div class="rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
+  <h1>Piano Log &amp; Inventory</h1>
+  <input type="password" name="password" placeholder="Password" autofocus autocomplete="current-password">
+  <button type="submit">Sign in</button>
+  {{ERROR}}
+</form></body></html>"""
 
 _cache = {'data': None, 'at': 0.0}
 _tab_cache = {}   # title -> {'data':..., 'at':...}
@@ -138,20 +187,65 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=DIR, **kw)
 
-    def send_json(self, data, status=200):
-        body = json.dumps(data, ensure_ascii=False).encode()
+    def is_authed(self):
+        if not PASSWORD:
+            return True
+        for part in self.headers.get('Cookie', '').split(';'):
+            k, _, v = part.strip().partition('=')
+            if k == 'plsession' and v in SESSIONS:
+                return True
+        return False
+
+    def send_login(self, error=False, status=200):
+        body = LOGIN_HTML.replace('{{ERROR}}',
+            '<div class="err">Incorrect password — try again.</div>' if error else '').encode()
         self.send_response(status)
-        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Cache-Control', 'no-store')
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
+    def do_POST(self):
+        if urlparse(self.path).path == '/login':
+            n = int(self.headers.get('Content-Length', 0))
+            pw = parse_qs(self.rfile.read(n).decode()).get('password', [''])[0]
+            if PASSWORD and secrets.compare_digest(pw, PASSWORD):
+                tok = secrets.token_hex(16)
+                SESSIONS.add(tok)
+                self.send_response(303)
+                self.send_header('Set-Cookie',
+                    f'plsession={tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000')
+                self.send_header('Location', '/')
+                self.end_headers()
+            else:
+                self.send_login(error=True)
+            return
+        self.send_response(404)
+        self.end_headers()
+
+    def send_json(self, data, status=200):
+        body = json.dumps(data, ensure_ascii=False).encode()
+        try:
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # client navigated away mid-response; nothing to do
+
     def do_GET(self):
-        from urllib.parse import urlparse, parse_qs
         u = urlparse(self.path)
         q = parse_qs(u.query)
         force = q.get('force', ['0'])[0] == '1'
+        if not self.is_authed():
+            if u.path == '/assets/blp-logo.png':   # the login page needs the logo
+                return super().do_GET()
+            if u.path.startswith('/api/'):
+                return self.send_json({'error': 'authentication required'}, 401)
+            return self.send_login()
         try:
             if u.path == '/api/pianos':
                 return self.send_json(get_pianos(force=force))
