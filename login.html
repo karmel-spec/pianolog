@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — Piano Log</title>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Assistant',sans-serif;background:#121212;min-height:100vh;
+       display:flex;align-items:center;justify-content:center;padding:1.5rem}
+  .card{background:#fff;border-radius:8px;padding:2.5rem 2.2rem;max-width:380px;width:100%;text-align:center}
+  .card img{width:240px;max-width:100%}
+  .rule{display:flex;align-items:center;margin:1.4rem 0}
+  .rule .bar{flex:1;height:2px;background:#9e2020}
+  .rule .dot{width:7px;height:7px;border-radius:50%;background:#9e2020;margin:0 5px}
+  h1{font-size:.8rem;letter-spacing:.24em;text-transform:uppercase;color:#4a4a4a;font-weight:600}
+  input{width:100%;margin-top:1.2rem;padding:.75rem 1rem;font-size:1rem;font-family:inherit;
+        border:1px solid #bbb;border-radius:6px}
+  input:focus{outline:2px solid #9e2020;border-color:transparent}
+  button{width:100%;margin-top:.8rem;padding:.8rem;background:#9e2020;color:#fff;border:none;
+         border-radius:6px;font-size:.9rem;letter-spacing:.14em;text-transform:uppercase;
+         font-family:inherit;cursor:pointer}
+  button:hover{background:#b43333}
+  .err{margin-top:.9rem;color:#9e2020;font-size:.85rem;display:none}
+</style></head><body>
+<form class="card" method="post" action="/api/login">
+  <img src="/assets/blp-logo.png" alt="Brigham Larson Pianos">
+  <div class="rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
+  <h1>Piano Log &amp; Inventory</h1>
+  <input type="password" name="password" placeholder="Password" autofocus autocomplete="current-password">
+  <button type="submit">Sign in</button>
+  <div class="err" id="err">Incorrect password — try again.</div>
+</form>
+<script>
+  if (new URLSearchParams(location.search).get('error'))
+    document.getElementById('err').style.display = 'block';
+</script>
+</body></html>

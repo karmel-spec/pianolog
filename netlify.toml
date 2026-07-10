@@ -1,0 +1,25 @@
+[build]
+  publish = "."
+
+[functions]
+  directory = "netlify/functions"
+
+[[redirects]]
+  from = "/api/pianos"
+  to = "/.netlify/functions/pianos"
+  status = 200
+
+[[redirects]]
+  from = "/api/tabs"
+  to = "/.netlify/functions/tabs"
+  status = 200
+
+[[redirects]]
+  from = "/api/tab"
+  to = "/.netlify/functions/tab"
+  status = 200
+
+[[redirects]]
+  from = "/api/login"
+  to = "/.netlify/functions/login"
+  status = 200

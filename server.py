@@ -207,7 +207,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        if urlparse(self.path).path == '/login':
+        if urlparse(self.path).path in ('/login', '/api/login'):
             n = int(self.headers.get('Content-Length', 0))
             pw = parse_qs(self.rfile.read(n).decode()).get('password', [''])[0]
             if PASSWORD and secrets.compare_digest(pw, PASSWORD):

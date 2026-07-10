@@ -234,7 +234,7 @@ function loadData(force){
   const note = $('#meta-note');
   note.textContent = force ? 'Refreshing from Google Sheets…' : 'Loading…';
   return fetch('/api/pianos' + (force ? '?force=1' : ''))
-    .then(r => { if(r.status===401){ location.reload(); throw new Error('auth'); } if(!r.ok) throw new Error('api ' + r.status); return r.json(); })
+    .then(r => { if(r.status===401){ location.href='/login.html'; throw new Error('auth'); } if(!r.ok) throw new Error('api ' + r.status); return r.json(); })
     .catch(e => {
       if (e.message === 'auth') throw e;
       return fetch('data/pianos.json').then(r => r.json()).then(d => (d.live = false, d));
@@ -280,7 +280,7 @@ function showTab(title, force){
   $('#t-head').innerHTML = ''; $('#t-rows').innerHTML = '';
   $('#t-count').textContent = ''; $('#t-empty').style.display = 'none';
   fetch(`/api/tab?title=${encodeURIComponent(title)}${force ? '&force=1' : ''}`)
-    .then(r => { if(r.status===401){ location.reload(); throw new Error('auth'); } return r.json(); })
+    .then(r => { if(r.status===401){ location.href='/login.html'; throw new Error('auth'); } return r.json(); })
     .then(d => {
       $('#t-loading').style.display = 'none';
       if (d.error) { $('#t-empty').textContent = 'Could not load: ' + d.error; $('#t-empty').style.display = 'block'; return; }
