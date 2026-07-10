@@ -135,6 +135,7 @@
     <img class="logo" src="assets/blp-logo.png" alt="Brigham Larson Pianos">
     <div class="site-title">Inventory History<strong>Piano Log</strong></div>
     <div class="refresh-note" id="meta-note"></div>
+    <button class="btn" id="refresh" title="Re-read the Google Sheet now" style="padding:.5rem 1.1rem">Refresh</button>
   </div>
   <div class="red-rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
 </header>
@@ -198,10 +199,23 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const GROUP_ORDER = ['Shopwork','Showroom','Storage','Rentals & Financing','On Premises','Digital','Web Archive','Sold / Exited','Other'];
 const badgeClass = g => g === 'Sold / Exited' ? 'sold' : g === 'Shopwork' ? 'shop' : g === 'Showroom' ? 'showroom' : '';
 
-fetch('data/pianos.json').then(r => r.json()).then(d => { DATA = d; init(); });
+loadData();
+function loadData(force){
+  const note = $('#meta-note');
+  note.textContent = force ? 'Refreshing from Google Sheets…' : 'Loading…';
+  return fetch('/api/pianos' + (force ? '?force=1' : ''))
+    .then(r => { if(!r.ok) throw new Error('api ' + r.status); return r.json(); })
+    .catch(() => fetch('data/pianos.json').then(r => r.json()).then(d => (d.live = false, d)))
+    .then(d => { DATA = d; init(); });
+}
+
 
 function init(){
-  $('#meta-note').innerHTML = `Snapshot: ${esc(DATA.generated_at)}<br>${DATA.pianos.length.toLocaleString()} pianos · ${DATA.sections.length} sections`;
+  const src = DATA.live
+    ? `<span style="color:#1a7a1a">●</span> Live from Google Sheets · ${esc(DATA.generated_at)}`
+    : `<span style="color:var(--red)">●</span> Offline snapshot: ${esc(DATA.generated_at)}${DATA.error ? ' · sheet unreachable' : ''}`;
+  $('#meta-note').innerHTML = `${src}<br>${DATA.pianos.length.toLocaleString()} pianos · ${DATA.sections.length} sections`;
+  $('#refresh').onclick = () => loadData(true);
 
   const groups = {};
   DATA.pianos.forEach(p => groups[p.group] = (groups[p.group]||0)+1);
@@ -211,11 +225,11 @@ function init(){
     .concat(GROUP_ORDER.filter(g => groups[g]).map(g => [g, g, groups[g]]));
   $('#tiles').innerHTML = tileDefs.map(([g,l,n]) =>
     `<div class="tile" data-group="${esc(g)}"><div class="num">${n.toLocaleString()}</div><div class="lbl">${esc(l)}</div></div>`).join('');
-  $('#tiles').addEventListener('click', e => {
+  $('#tiles').onclick = e => {
     const t = e.target.closest('.tile'); if(!t) return;
     $('#f-group').value = t.dataset.group; $('#f-section').value = '';
     apply();
-  });
+  };
 
   // charts
   hbars('#chart-groups', GROUP_ORDER.filter(g=>groups[g]).map(g=>[g,groups[g]]), g => { $('#f-group').value = g; apply(); });
@@ -231,27 +245,29 @@ function init(){
   fillSelect('#f-category', cats.filter(c=>c.length<40));
 
   ['#q','#f-group','#f-section','#f-make','#f-category'].forEach(s =>
-    $(s).addEventListener('input', apply));
-  $('#clear').addEventListener('click', () => {
+    $(s).oninput = apply);
+  $('#clear').onclick = () => {
     ['#q','#f-group','#f-section','#f-make','#f-category'].forEach(s => $(s).value='');
     apply();
-  });
-  $('#more').addEventListener('click', () => { shown += PAGE * 3; render(); });
+  };
+  $('#more').onclick = () => { shown += PAGE * 3; render(); };
 
-  document.querySelectorAll('thead th').forEach(th => th.addEventListener('click', () => {
+  document.querySelectorAll('thead th').forEach(th => th.onclick = () => {
     const k = th.dataset.sort;
     if (sortKey === k) { sortDir *= -1; } else { sortKey = k; sortDir = 1; }
     apply();
-  }));
+  });
 
-  $('#overlay').addEventListener('click', closeDrawer);
-  document.addEventListener('keydown', e => { if(e.key==='Escape') closeDrawer(); });
+  $('#overlay').onclick = closeDrawer;
+  document.onkeydown = e => { if(e.key==='Escape') closeDrawer(); };
 
   apply();
 }
 
 function fillSelect(sel, items){
-  $(sel).insertAdjacentHTML('beforeend', items.map(i=>`<option>${esc(i)}</option>`).join(''));
+  const el = $(sel);
+  while (el.options.length > 1) el.remove(1);  // keep the "All …" option on re-init
+  el.insertAdjacentHTML('beforeend', items.map(i=>`<option>${esc(i)}</option>`).join(''));
 }
 
 function hbars(sel, pairs, onClick){
@@ -260,14 +276,14 @@ function hbars(sel, pairs, onClick){
     `<div class="hbar"><span class="name" title="${esc(name)}">${esc(name)}</span>
      <span class="track"><span class="fill" data-name="${esc(name)}" data-n="${n}" style="width:${Math.max(1.5, n/max*100)}%"></span></span>
      <span class="val">${n.toLocaleString()}</span></div>`).join('');
-  $(sel).addEventListener('click', e => { const f=e.target.closest('.fill'); if(f) onClick(f.dataset.name); });
-  $(sel).addEventListener('mousemove', e => {
+  $(sel).onclick = e => { const f=e.target.closest('.fill'); if(f) onClick(f.dataset.name); };
+  $(sel).onmousemove = e => {
     const f = e.target.closest('.fill'); const tip = $('#tip');
     if(!f){ tip.style.display='none'; return; }
     tip.textContent = `${f.dataset.name}: ${Number(f.dataset.n).toLocaleString()} pianos — click to filter`;
     tip.style.display='block'; tip.style.left=(e.clientX+12)+'px'; tip.style.top=(e.clientY+12)+'px';
-  });
-  $(sel).addEventListener('mouseleave', () => $('#tip').style.display='none');
+  };
+  $(sel).onmouseleave = () => $('#tip').style.display='none';
 }
 
 function apply(){
@@ -277,7 +293,7 @@ function apply(){
   view = DATA.pianos.filter(p =>
     (!g || p.group===g) && (!s || p.section===s) &&
     (!m || (p.make||'').trim()===m) && (!c || p.project_category.trim()===c) &&
-    (!q || [p.summary,p.serial,p.make,p.model,p.owner,p.notes,p.year,p.category,p.location_status,p.milestones]
+    (!q || [p.summary,p.serial,p.make,p.model,p.owner,p.notes,p.year,p.category,p.location_status,p.milestones,p.subsection]
       .some(v => v && v.toLowerCase().includes(q))));
   if (sortKey){
     const num = v => {
@@ -315,7 +331,7 @@ function render(){
         ${p.finish?`<div class="sub">${esc(p.finish)}${p.sheen?' · '+esc(p.sheen):''}</div>`:''}</td>
       <td class="serial">${esc(firstLine(p.serial))}</td>
       <td>${esc(p.year)}</td>
-      <td><span class="badge ${badgeClass(p.group)}" title="${esc(p.section)}">${esc(shortSection(p.section))}</span></td>
+      <td><span class="badge ${badgeClass(p.group)}" title="${esc(p.section + (p.subsection ? ' — ' + p.subsection : ''))}">${esc(shortSection(p.section))}</span></td>
       <td>${esc(p.project_category)}</td>
       <td>${esc(p.owner_name)}</td>
       <td style="white-space:pre-line;font-size:.78rem;color:var(--ink-2)">${esc(p.entry_exit_dates)}</td>
@@ -331,7 +347,7 @@ const firstLine = s => String(s||'').split('\n')[0];
 const shortSection = s => s.length > 26 ? s.slice(0,24)+'…' : s;
 
 const FIELDS = [
-  ['Section','section'],['Location / Status','location_status'],['Status','status'],
+  ['Section','section'],['Sub-location','subsection'],['Location / Status','location_status'],['Status','status'],
   ['Project Category','project_category'],['Entry / Exit Dates','entry_exit_dates'],
   ['Completion Date','completion_date'],['Receiving / Exiting','receiving_exiting'],
   ['Category Tags','category'],['Finish','finish'],['Sheen','sheen'],['Trim','trim'],

@@ -7,36 +7,29 @@ Internal webapp presenting the full piano inventory history from the
 ## Run it
 
 ```sh
-./scripts/refresh.sh   # first time: pull the data snapshot (data/ is gitignored)
-python3 -m http.server 8412 --directory ~/PianoLogApp
+python3 server.py
 # open http://localhost:8412
 ```
 
 (Also registered as the `piano-log` server in `~/.claude/launch.json`.)
 
+The app is **live**: `server.py` reads the Google Sheet through the `gog` CLI
+on demand (cached 5 minutes; the header's Refresh button forces a re-read), so
+the spreadsheet stays the source of truth. Requires `gog` authenticated as
+karmel@brighamlarsonpianos.com. If Google is unreachable it falls back to the
+last snapshot in `data/` and shows an "Offline snapshot" indicator.
+
 > **Note:** `data/` is not committed — the snapshots contain customer contact
-> info and this repo is public. Each machine generates its own snapshot with
-> `scripts/refresh.sh` (requires `gog` authed as karmel@brighamlarsonpianos.com).
-
-## Refresh the data
-
-The app reads a snapshot in `data/pianos.json`. To pull the latest from Google Sheets:
-
-```sh
-./scripts/refresh.sh
-```
-
-This uses `gog` with the karmel@brighamlarsonpianos.com account, then re-runs
-`scripts/parse.py` (which turns the raw sheet rows into clean JSON — section
-headers become `section`/`group` fields on each piano).
+> info and this repo is public. The server regenerates them on first fetch.
 
 ## Structure
 
-- `index.html` — the whole app (vanilla HTML/CSS/JS, no build step)
-- `data/pianolog-raw.json` — raw sheet values as fetched
-- `data/pianos.json` — parsed data the app loads
+- `server.py` — live server: static files + `/api/pianos` (gog fetch + parse, 5-min cache, `?force=1` to bypass)
+- `index.html` — the whole frontend (vanilla HTML/CSS/JS, no build step)
+- `scripts/parse.py` — sheet-rows → clean JSON (section headers → `section`/`group`, sub-labels → `subsection`)
+- `scripts/refresh.sh` — manual snapshot refresh (optional; the server does this automatically)
+- `data/` (gitignored) — raw + parsed snapshots, used as offline fallback
 - `assets/blp-logo.png` — site logo (from the Shopify CDN)
-- `scripts/parse.py`, `scripts/refresh.sh`
 
 ## Branding
 

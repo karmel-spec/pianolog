@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""Parse the raw Piano Log sheet values into clean JSON for the webapp.
+"""Parse raw Piano Log sheet values into clean JSON for the webapp.
 
-Usage: python3 scripts/parse.py  (reads data/pianolog-raw.json, writes data/pianos.json)
+Importable: parse(values) -> dict.
+CLI: python3 scripts/parse.py  (reads data/pianolog-raw.json, writes data/pianos.json)
 """
 import json, os, re
 from datetime import datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RAW = os.path.join(ROOT, 'data', 'pianolog-raw.json')
-OUT = os.path.join(ROOT, 'data', 'pianos.json')
 
 COLS = {
     'updated_at': 0, 'owner': 1, 'serial': 2, 'summary': 3, 'year': 4,
@@ -22,7 +21,6 @@ COLS = {
     'down_payment_date': 32, 'milestones': 35,
 }
 
-# Map section headings to a coarse group used for top-level filtering
 GROUPS = [
     (r'CUSTOM SHOPWORK EXITED|SOLD|EXITED', 'Sold / Exited'),
     (r'^\(WEB\)', 'Web Archive'),
@@ -37,8 +35,12 @@ GROUPS = [
 def cell(row, idx):
     return row[idx].strip() if idx < len(row) else ''
 
-def is_section_header(row):
-    filled = [c for c in row if c.strip()]
+def meaningful(row):
+    """Cells with real content (not lone punctuation)."""
+    return [c for c in row if c.strip() and c.strip() not in {'.', '`', 'x', '-'}]
+
+def section_header(row):
+    filled = meaningful(row)
     if not filled or len(filled) > 3:
         return None
     owner = cell(row, 1)
@@ -46,14 +48,44 @@ def is_section_header(row):
         return owner
     return None
 
+ARTIFACT_DATE = re.compile(r'^\s*(12/31/1899|1/[12]/1900)\s*$')
+
+def data_cells(row):
+    """Cells that carry real record data: everything except the owner (1),
+    location (20), and PUBLISHED checkbox (8) columns, lone x/./- marks, and
+    epoch-artifact dates left behind by the sheet."""
+    out = []
+    for i, c in enumerate(row):
+        c = c.strip()
+        if not c or i in (1, 8, 20) or c in {'.', '`', 'x', '-', 'TRUE', 'FALSE'}:
+            continue
+        if ARTIFACT_DATE.match(c):
+            continue
+        out.append(c)
+    return out
+
+def subsection_label(row):
+    """Label rows that subdivide a section ("Ralph Nielsen's Player Shop",
+    "Wing Room 2", "2026", "blue"): no record data, and the owner text isn't
+    a person/contact ("Denham, Tiffany - Y", emails, phone numbers)."""
+    owner = cell(row, 1)
+    if data_cells(row):
+        return None
+    if not owner:
+        return None
+    if re.match(r'^[A-Z][a-z]+, [A-Z]', owner):  # "Last, First" -> real entry
+        return None
+    if '@' in owner or re.search(r'\d{3}[-.\s)]\d', owner):  # contact info -> entry
+        return None
+    return ' '.join(owner.split('\n'))[:80]
+
 def group_for(section):
     for pattern, group in GROUPS:
-        if re.search(pattern, section):
+        if re.search(pattern, section or ''):
             return group
     return 'Other'
 
 def owner_name(owner):
-    """First line of the owner cell that looks like a name (skip *notes* and status flags)."""
     for line in owner.split('\n'):
         line = line.strip()
         if not line or line.startswith('*') or line.startswith('http'):
@@ -65,45 +97,52 @@ def owner_name(owner):
         return line
     return ''
 
-def main():
-    with open(RAW) as f:
-        vals = json.load(f)['values']
-
+def parse(vals):
     pianos, sections = [], []
-    section, seq = None, 0
+    section, subsection, seq = None, None, 0
     for i, row in enumerate(vals):
         if i < 6:
             continue  # blank row, header, legend rows
-        header = is_section_header(row)
+        header = section_header(row)
         if header:
-            section = header
+            section, subsection = header, None
             sections.append({'name': section, 'group': group_for(section), 'row': i + 1})
             continue
-        if not any(c.strip() for c in row):
+        if not meaningful(row):
             continue
-        summary, serial, make = cell(row, 3), cell(row, 2), cell(row, 5)
-        owner = cell(row, 1)
-        if not (summary or serial or make):
-            # note-only row: attach to previous piano's notes context, skip otherwise
+        label = subsection_label(row)
+        if label:
+            subsection = label
             continue
+        dc = data_cells(row)
+        if not cell(row, 1) and (not dc or dc == [cell(row, 18)]):
+            continue  # checkbox/status-only artifact rows with no substance
         seq += 1
         p = {k: cell(row, idx) for k, idx in COLS.items()}
         p['id'] = seq
         p['sheet_row'] = i + 1
         p['section'] = section or 'Uncategorized'
-        p['group'] = group_for(section) if section else 'Other'
-        p['owner_name'] = owner_name(owner)
+        p['subsection'] = subsection or ''
+        p['group'] = group_for(section)
+        p['owner_name'] = owner_name(p['owner'])
+        if not (p['summary'] or p['serial'] or p['make']):
+            p['summary'] = p['owner_name'] or p['owner'].split('\n')[0][:60] or '(unidentified entry)'
+            p['unidentified'] = True
         pianos.append(p)
-
-    out = {
+    return {
         'generated_at': datetime.now().strftime('%b %d, %Y at %I:%M %p'),
         'source': 'Piano Log & Inventory — first tab (Piano Log)',
         'sections': sections,
         'pianos': pianos,
     }
-    with open(OUT, 'w') as f:
+
+def main():
+    with open(os.path.join(ROOT, 'data', 'pianolog-raw.json')) as f:
+        vals = json.load(f)['values']
+    out = parse(vals)
+    with open(os.path.join(ROOT, 'data', 'pianos.json'), 'w') as f:
         json.dump(out, f, ensure_ascii=False)
-    print(f'{len(pianos)} pianos across {len(sections)} sections -> {OUT}')
+    print(f"{len(out['pianos'])} pianos across {len(out['sections'])} sections")
 
 if __name__ == '__main__':
     main()

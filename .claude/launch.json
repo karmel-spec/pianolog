@@ -4,7 +4,7 @@
     {
       "name": "piano-log",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8412", "--directory", "/Users/ivorylarson/PianoLogApp"],
+      "runtimeArgs": ["server.py"],
       "port": 8412
     }
   ]
