@@ -235,8 +235,15 @@ function loadData(force){
   note.textContent = force ? 'Refreshing from Google Sheets…' : 'Loading…';
   return fetch('/api/pianos' + (force ? '?force=1' : ''))
     .then(r => { if(r.status===401){ location.reload(); throw new Error('auth'); } if(!r.ok) throw new Error('api ' + r.status); return r.json(); })
-    .catch(() => fetch('data/pianos.json').then(r => r.json()).then(d => (d.live = false, d)))
-    .then(d => { DATA = d; init(); });
+    .catch(e => {
+      if (e.message === 'auth') throw e;
+      return fetch('data/pianos.json').then(r => r.json()).then(d => (d.live = false, d));
+    })
+    .then(d => { DATA = d; init(); })
+    .catch(e => {
+      if (e.message === 'auth') return;
+      note.innerHTML = `<span style="color:var(--red)">●</span> Could not load inventory — is the server running?<br>${esc(e.message)}`;
+    });
 }
 
 function loadTabs(){
