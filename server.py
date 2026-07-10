@@ -77,6 +77,26 @@ def get_tab(title, force=False):
     _tab_cache[title] = {'data': data, 'at': time.time()}
     return data
 
+def apply_owner_overlay(data):
+    """Merge QuickBooks-matched owner info (scripts/match_owners.py) into
+    pianos that lack owner data. Adds qb_* fields; never overwrites the sheet's
+    own owner column."""
+    path = os.path.join(DIR, 'data', 'owners-overlay.json')
+    if not os.path.exists(path):
+        return
+    with open(path) as f:
+        overlay = json.load(f)
+    by_row = {v['sheet_row']: v for v in overlay.values() if not v.get('conflict')}
+    n = 0
+    for p in data['pianos']:
+        m = by_row.get(p['sheet_row'])
+        if m and not p.get('owner_name'):
+            p['qb_owner'] = m['qb_customer']
+            p['qb_sale_date'] = m.get('qb_date', '')
+            p['qb_doc'] = m.get('qb_doc', '')
+            n += 1
+    data['qb_matched'] = n
+
 def fetch_live():
     r = subprocess.run(
         ['gog', '-a', ACCOUNT, '--json', 'sheets', 'get', SHEET_ID, RANGE],
@@ -85,6 +105,7 @@ def fetch_live():
         raise RuntimeError(r.stderr.strip() or 'gog sheets get failed')
     raw = json.loads(r.stdout)
     data = parse(raw.get('values', []))
+    apply_owner_overlay(data)
     data['live'] = True
     with open(os.path.join(DIR, 'data', 'pianolog-raw.json'), 'w') as f:
         json.dump(raw, f, ensure_ascii=False)
