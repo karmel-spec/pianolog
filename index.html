@@ -550,7 +550,7 @@ function openDrawer(p){
     <div class="drawer-body">
       ${links.length?`<div class="linkchips">${links.map(([l,u])=>`<a href="${esc(u.trim().split(/\s/)[0])}" target="_blank" rel="noopener">${l}</a>`).join('')}</div>`:''}
       ${p.owner?field('Owner / Contact', p.owner):''}
-      ${p.qb_owner?field('Owner (QuickBooks match)', `${p.qb_owner}${p.qb_sale_date?'\nSale date: '+p.qb_sale_date:''}${p.qb_doc?'\nInvoice/Doc #: '+p.qb_doc:''}`):''}
+      ${p.qb_owner?field('Owner (QuickBooks match)', [p.qb_owner, p.qb_email, p.qb_address, p.qb_city_state, p.qb_sale_date?'Sale date: '+p.qb_sale_date:'', p.qb_matched_serial?'Matched serial: '+p.qb_matched_serial:''].filter(Boolean).join('\n')):''}
       <div class="fields-2">${FIELDS.map(([l,k])=>p[k]?field(l,String(p[k])):'').join('')}</div>
       ${p.notes?field('Notes', p.notes):''}
       ${p.milestones?field('Milestones & Project Updates', p.milestones):''}

@@ -13,7 +13,7 @@ unreachable.
 Run: python3 server.py   (port 8412)
 Requires: gog authenticated as karmel@brighamlarsonpianos.com
 """
-import http.server, json, os, secrets, subprocess, sys, threading, time
+import http.server, json, os, re, secrets, subprocess, sys, threading, time
 from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts'))
@@ -134,15 +134,26 @@ def apply_owner_overlay(data):
     if not os.path.exists(path):
         return
     with open(path) as f:
-        overlay = json.load(f)
-    by_row = {v['sheet_row']: v for v in overlay.values() if not v.get('conflict')}
+        by_serial = json.load(f).get('by_serial', {})  # normalized-serial -> {qb_owner,...}
+    norm = lambda s: re.sub(r'[^A-Z0-9]', '', (s or '').upper())
+    has_owner = lambda p: bool(p.get('owner_name') or '@' in p.get('owner', '')
+                               or re.search(r'\d{3}[-.\s)]\d', p.get('owner', '')))
     n = 0
     for p in data['pianos']:
-        m = by_row.get(p['sheet_row'])
-        if m and not p.get('owner_name'):
-            p['qb_owner'] = m['qb_customer']
-            p['qb_sale_date'] = m.get('qb_date', '')
-            p['qb_doc'] = m.get('qb_doc', '')
+        if has_owner(p):
+            continue  # only fill pianos with no owner name, email, or phone
+        m = None
+        for tok in re.findall(r'[A-Z]{0,3}\d{3,}[A-Z0-9]*', (p.get('serial', '')).upper()):
+            m = by_serial.get(norm(tok)) or by_serial.get(re.sub(r'\D', '', tok))
+            if m:
+                break
+        if m:
+            p['qb_owner'] = m.get('qb_owner', '')
+            p['qb_sale_date'] = m.get('qb_sale_date', '')
+            p['qb_email'] = m.get('qb_email', '')
+            p['qb_address'] = m.get('qb_address', '')
+            p['qb_city_state'] = m.get('qb_city_state', '')
+            p['qb_matched_serial'] = m.get('matched_serial', '')
             n += 1
     data['qb_matched'] = n
 
