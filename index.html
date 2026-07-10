@@ -43,6 +43,12 @@
   .red-rule .bar{flex:1;height:2px;background:var(--red)}
   .red-rule .dot{width:8px;height:8px;border-radius:50%;background:var(--red);margin:0 6px;flex:none}
 
+  /* spreadsheet-tab navigation — styled like the site's header nav */
+  .tabs-nav{max-width:1280px;margin:0 auto;padding:0 1.5rem;display:flex;gap:1.4rem;overflow-x:auto;scrollbar-width:thin}
+  .tabs-nav a{display:block;padding:.75rem 0 .6rem;font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);text-decoration:none;white-space:nowrap;border-bottom:3px solid transparent}
+  .tabs-nav a:hover{color:var(--ink)}
+  .tabs-nav a.active{color:var(--ink);font-weight:600;border-bottom-color:var(--red)}
+
   main{max-width:1280px;margin:0 auto;padding:2rem 1.5rem 4rem}
   h2.section-head{font-size:.8rem;letter-spacing:.24em;text-transform:uppercase;font-weight:600;color:var(--ink);margin:2.4rem 0 1rem}
   h2.section-head:first-child{margin-top:0}
@@ -68,7 +74,7 @@
   .hbar .val{font-variant-numeric:tabular-nums;color:var(--ink);font-size:.8rem}
 
   /* controls */
-  .controls{position:sticky;top:89px;z-index:30;background:var(--paper);padding:.9rem 0;border-bottom:1px solid var(--line);display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
+  .controls{position:sticky;top:131px;z-index:30;background:var(--paper);padding:.9rem 0;border-bottom:1px solid var(--line);display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
   .controls input[type=search]{flex:1 1 260px;padding:.6rem .9rem;border:1px solid var(--ink-2);border-radius:var(--radius);font-size:.95rem;font-family:inherit}
   .controls input[type=search]:focus{outline:2px solid var(--red);outline-offset:1px;border-color:transparent}
   .controls select{padding:.6rem .7rem;border:1px solid var(--line);border-radius:var(--radius);font-size:.85rem;font-family:inherit;background:var(--paper);color:var(--ink);max-width:230px}
@@ -138,9 +144,11 @@
     <button class="btn" id="refresh" title="Re-read the Google Sheet now" style="padding:.5rem 1.1rem">Refresh</button>
   </div>
   <div class="red-rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
+  <nav class="tabs-nav" id="tabs-nav" aria-label="Spreadsheet tabs"></nav>
 </header>
 
 <main>
+<div id="view-pianolog">
   <h2 class="section-head">At a Glance</h2>
   <div class="tiles" id="tiles"></div>
 
@@ -176,6 +184,21 @@
   </table>
   <div class="more-row" id="more-wrap" style="display:none"><button class="btn" id="more">Show more</button></div>
   <div class="empty" id="empty" style="display:none">No pianos match — try clearing a filter.</div>
+</div>
+
+<div id="view-tab" style="display:none">
+  <h2 class="section-head" id="t-title"></h2>
+  <div class="controls">
+    <input type="search" id="tq" placeholder="Search this tab…" autocomplete="off">
+    <span class="count-line" id="t-count"></span>
+  </div>
+  <div style="overflow-x:auto">
+    <table id="t-tbl"><thead><tr id="t-head"></tr></thead><tbody id="t-rows"></tbody></table>
+  </div>
+  <div class="more-row" id="t-more-wrap" style="display:none"><button class="btn" id="t-more">Show more</button></div>
+  <div class="empty" id="t-empty" style="display:none">No rows match.</div>
+  <div class="empty" id="t-loading" style="display:none">Loading from Google Sheets…</div>
+</div>
 </main>
 
 <div class="overlay" id="overlay"></div>
@@ -199,7 +222,14 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const GROUP_ORDER = ['Shopwork','Showroom','Storage','Rentals & Financing','On Premises','Digital','Web Archive','Sold / Exited','Other'];
 const badgeClass = g => g === 'Sold / Exited' ? 'sold' : g === 'Shopwork' ? 'shop' : g === 'Showroom' ? 'showroom' : '';
 
+const PIANO_TAB = 'Piano Log';
+let TABS = [], activeTab = PIANO_TAB;
+const TAB_DATA = {};   // title -> generic tab payload
+let tView = [], tShown = PAGE, tSortCol = -1, tSortDir = 1, tCols = [];
+
 loadData();
+loadTabs();
+
 function loadData(force){
   const note = $('#meta-note');
   note.textContent = force ? 'Refreshing from Google Sheets…' : 'Loading…';
@@ -209,13 +239,150 @@ function loadData(force){
     .then(d => { DATA = d; init(); });
 }
 
+function loadTabs(){
+  fetch('/api/tabs').then(r => r.json()).then(d => {
+    TABS = (d.tabs || []).map(t => t.title);
+    if (!TABS.includes(PIANO_TAB)) TABS.unshift(PIANO_TAB);
+    TABS = [PIANO_TAB, ...TABS.filter(t => t !== PIANO_TAB)];
+    $('#tabs-nav').innerHTML = TABS.map(t =>
+      `<a href="#${encodeURIComponent(t)}" data-tab="${esc(t)}">${esc(t)}</a>`).join('');
+    $('#tabs-nav').onclick = e => {
+      const a = e.target.closest('a'); if(!a) return;
+      openTab(a.dataset.tab);
+    };
+    const fromHash = decodeURIComponent(location.hash.slice(1) || '');
+    openTab(TABS.includes(fromHash) ? fromHash : PIANO_TAB);
+  }).catch(() => { $('#tabs-nav').innerHTML = ''; });
+}
+
+function openTab(title){
+  activeTab = title;
+  document.querySelectorAll('#tabs-nav a').forEach(a =>
+    a.classList.toggle('active', a.dataset.tab === title));
+  const isPiano = title === PIANO_TAB;
+  $('#view-pianolog').style.display = isPiano ? '' : 'none';
+  $('#view-tab').style.display = isPiano ? 'none' : '';
+  if (!isPiano) showTab(title);
+  else if (DATA) updateMeta();
+}
+
+function showTab(title, force){
+  if (TAB_DATA[title] && !force) return renderTabView(TAB_DATA[title]);
+  $('#t-title').textContent = title;
+  $('#t-loading').style.display = 'block';
+  $('#t-head').innerHTML = ''; $('#t-rows').innerHTML = '';
+  $('#t-count').textContent = ''; $('#t-empty').style.display = 'none';
+  fetch(`/api/tab?title=${encodeURIComponent(title)}${force ? '&force=1' : ''}`)
+    .then(r => r.json())
+    .then(d => {
+      $('#t-loading').style.display = 'none';
+      if (d.error) { $('#t-empty').textContent = 'Could not load: ' + d.error; $('#t-empty').style.display = 'block'; return; }
+      TAB_DATA[title] = d;
+      if (activeTab === title) renderTabView(d);
+      updateMeta(d);
+    });
+}
+
+// pick up to 8 most-filled columns for the table; everything shows in the drawer
+function chooseCols(d){
+  const fill = d.headers.map((h, i) =>
+    ({i, h, n: h ? d.rows.reduce((a, r) => a + (r.cells[i] ? 1 : 0), 0) : 0}));
+  return fill.filter(c => c.n > 0).sort((a, b) => b.n - a.n).slice(0, 8)
+    .sort((a, b) => a.i - b.i).map(c => c.i);
+}
+
+function renderTabView(d){
+  $('#t-title').textContent = `${d.title} — ${d.rows.length.toLocaleString()} rows`;
+  tCols = chooseCols(d);
+  tSortCol = -1; tSortDir = 1; tShown = PAGE;
+  $('#t-head').innerHTML = tCols.map(i =>
+    `<th data-col="${i}">${esc(d.headers[i] || '—')} <span class="arrow"></span></th>`).join('');
+  $('#t-head').onclick = e => {
+    const th = e.target.closest('th'); if(!th) return;
+    const c = +th.dataset.col;
+    if (tSortCol === c) tSortDir *= -1; else { tSortCol = c; tSortDir = 1; }
+    applyTab();
+  };
+  $('#tq').value = '';
+  $('#tq').oninput = applyTab;
+  $('#t-more').onclick = () => { tShown += PAGE * 3; renderTabRows(); };
+  applyTab();
+}
+
+function applyTab(){
+  const d = TAB_DATA[activeTab]; if(!d) return;
+  const q = $('#tq').value.trim().toLowerCase();
+  tView = q ? d.rows.filter(r => r.cells.some(c => c.toLowerCase().includes(q))) : [...d.rows];
+  if (tSortCol >= 0){
+    const num = v => parseFloat(String(v).replace(/[^\d.-]/g, ''));
+    tView.sort((a, b) => {
+      const x = a.cells[tSortCol] || '', y = b.cells[tSortCol] || '';
+      if (!x || !y) return !x && !y ? 0 : !x ? 1 : -1;
+      const nx = num(x), ny = num(y);
+      if (!isNaN(nx) && !isNaN(ny)) return (nx - ny) * tSortDir;
+      return x.localeCompare(y) * tSortDir;
+    });
+  }
+  document.querySelectorAll('#t-head th').forEach(th =>
+    th.querySelector('.arrow').textContent = +th.dataset.col === tSortCol ? (tSortDir > 0 ? '▲' : '▼') : '');
+  tShown = PAGE;
+  renderTabRows();
+}
+
+function renderTabRows(){
+  const d = TAB_DATA[activeTab]; if(!d) return;
+  $('#t-count').textContent = `${tView.length.toLocaleString()} of ${d.rows.length.toLocaleString()} rows`;
+  $('#t-empty').style.display = tView.length ? 'none' : 'block';
+  $('#t-empty').textContent = 'No rows match.';
+  $('#t-rows').innerHTML = tView.slice(0, tShown).map((r, k) => `
+    <tr data-k="${k}">${tCols.map(i =>
+      `<td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc((r.cells[i] || '').slice(0, 160))}</td>`).join('')}
+    </tr>`).join('');
+  $('#t-more-wrap').style.display = tView.length > tShown ? 'block' : 'none';
+  $('#t-rows').onclick = e => {
+    const tr = e.target.closest('tr'); if(!tr) return;
+    openTabDrawer(d, tView[+tr.dataset.k]);
+  };
+}
+
+function openTabDrawer(d, r){
+  const titleCol = tCols.find(i => r.cells[i] && !/timestamp|date/i.test(d.headers[i] || ''));
+  const first = titleCol != null ? r.cells[titleCol] : (tCols.length ? (r.cells[tCols[0]] || '(blank)') : '(row)');
+  $('#drawer').innerHTML = `
+    <div class="drawer-head">
+      <button class="close" aria-label="Close">×</button>
+      <div class="kicker">${esc(d.title)}</div>
+      <h3>${esc(first.slice(0, 80))}</h3>
+      <div class="serial">Sheet row ${r.row}</div>
+      <div class="drawer-rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
+    </div>
+    <div class="drawer-body">
+      ${d.headers.map((h, i) => h && r.cells[i] ? field(h, r.cells[i]) : '').join('')}
+    </div>`;
+  $('#drawer').querySelector('.close').onclick = closeDrawer;
+  $('#overlay').classList.add('open');
+  $('#drawer').classList.add('open');
+  $('#drawer').scrollTop = 0;
+}
+
+function updateMeta(tab){
+  if (activeTab === PIANO_TAB){
+    if (!DATA) return;
+    const src = DATA.live
+      ? `<span style="color:#1a7a1a">●</span> Live from Google Sheets · ${esc(DATA.generated_at)}`
+      : `<span style="color:var(--red)">●</span> Offline snapshot: ${esc(DATA.generated_at)}${DATA.error ? ' · sheet unreachable' : ''}`;
+    $('#meta-note').innerHTML = `${src}<br>${DATA.pianos.length.toLocaleString()} pianos · ${DATA.sections.length} sections`;
+  } else if (tab || TAB_DATA[activeTab]) {
+    const d = tab || TAB_DATA[activeTab];
+    $('#meta-note').innerHTML = `<span style="color:#1a7a1a">●</span> Live from Google Sheets · ${esc(d.generated_at)}<br>${d.rows.length.toLocaleString()} rows`;
+  }
+}
+
 
 function init(){
-  const src = DATA.live
-    ? `<span style="color:#1a7a1a">●</span> Live from Google Sheets · ${esc(DATA.generated_at)}`
-    : `<span style="color:var(--red)">●</span> Offline snapshot: ${esc(DATA.generated_at)}${DATA.error ? ' · sheet unreachable' : ''}`;
-  $('#meta-note').innerHTML = `${src}<br>${DATA.pianos.length.toLocaleString()} pianos · ${DATA.sections.length} sections`;
-  $('#refresh').onclick = () => loadData(true);
+  updateMeta();
+  $('#refresh').onclick = () =>
+    activeTab === PIANO_TAB ? loadData(true) : showTab(activeTab, true);
 
   const groups = {};
   DATA.pianos.forEach(p => groups[p.group] = (groups[p.group]||0)+1);

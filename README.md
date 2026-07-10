@@ -19,6 +19,15 @@ the spreadsheet stays the source of truth. Requires `gog` authenticated as
 karmel@brighamlarsonpianos.com. If Google is unreachable it falls back to the
 last snapshot in `data/` and shows an "Offline snapshot" indicator.
 
+**Every visible spreadsheet tab is a navigation tab** in the app. "Piano Log"
+gets the rich inventory view (tiles, charts, filters); the other tabs
+(Restoration Contracts, Sell/Consign/Donate, Moving Web Leads, Appraisal
+Requests, Piano Storage, PIE Program, Before/After galleries, Products,
+Team Bios, Shopify, Image Uploads) get a generic live explorer: the 8
+most-populated columns as a sortable, searchable table, with the full record
+in a detail drawer. New tabs added to the sheet appear automatically
+(the tab list refreshes hourly).
+
 > **Note:** `data/` is not committed — the snapshots contain customer contact
 > info and this repo is public. The server regenerates them on first fetch.
 
