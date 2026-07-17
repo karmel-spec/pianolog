@@ -44,11 +44,11 @@ person: Email + Role. Changes take effect within ~5 minutes, no redeploy:
 - **Admin** — full access. Automatic for `@brighamlarsonpianos.com` accounts;
   grantable to any email via an App Access row (or the `PIANOLOG_ADMINS` env
   var).
-- **Tech** — automatic for `firstlast.blp@gmail.com` gmails. Technicians never
+- **Tech** — automatic for any `@gmail.com` account. Technicians never
   receive pricing or owner contact data (`owner`, agreements/finance,
   COGS/invoice, QBO, iSolved, down payments — filtered **server-side**), and
   the raw spreadsheet-tab browser is admin-only.
-- **Blocked** — shuts an account out entirely; overrides the tech pattern.
+- **Blocked** — shuts an account out entirely; overrides the gmail default.
   Google sessions are re-checked against the roster on every request, so
   blocking someone locks them out mid-session (within the 5-minute cache),
   not 30 days later when their cookie expires.

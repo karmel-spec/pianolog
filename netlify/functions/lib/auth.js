@@ -15,14 +15,16 @@ const GOOGLE_CLIENT_ID =
 
 // Full access: company-domain accounts + the owner gmails. Extend with the
 // PIANOLOG_ADMINS env var (comma-separated emails) — no code change needed.
+// (The owner gmails are also Admin rows in App Access; keeping them here too
+// means a sheet outage can never demote them.)
 const ADMIN_DOMAIN = 'brighamlarsonpianos.com';
 const ADMIN_EMAILS = [
   'brighamlarson@gmail.com',
   'brighamlarsonpianos@gmail.com',
   'pianoshop.blp@gmail.com',
 ];
-// Restricted access: technician accounts (firstlast.blp@gmail.com).
-const TECH_RE = /^[a-z0-9.]+\.blp@gmail\.com$/i;
+// Restricted access: any @gmail.com account defaults to technician.
+const TECH_RE = /@gmail\.com$/i;
 
 function roleForEmail(email) {
   email = String(email || '').toLowerCase();

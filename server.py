@@ -59,7 +59,7 @@ ADMIN_EMAILS = [
     'brighamlarsonpianos@gmail.com',
     'pianoshop.blp@gmail.com',
 ]
-TECH_RE = re.compile(r'^[a-z0-9.]+\.blp@gmail\.com$', re.I)
+TECH_RE = re.compile(r'@gmail\.com$', re.I)  # any gmail defaults to technician
 ROSTER_TAB = 'App Access'
 ROSTER_TTL = 300  # seconds; also how fast a Blocked row takes effect
 
@@ -128,7 +128,7 @@ def role_for_email(email):
         return 'admin'
     if email in ADMIN_EMAILS or email in extra:
         return 'admin'
-    if TECH_RE.match(email):
+    if TECH_RE.search(email):
         return 'tech'
     return None
 
