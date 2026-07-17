@@ -43,11 +43,23 @@
   .red-rule .bar{flex:1;height:2px;background:var(--red)}
   .red-rule .dot{width:8px;height:8px;border-radius:50%;background:var(--red);margin:0 6px;flex:none}
 
-  /* spreadsheet-tab navigation — styled like the site's header nav */
-  .tabs-nav{max-width:1280px;margin:0 auto;padding:0 1.5rem;display:flex;gap:1.4rem;overflow-x:auto;scrollbar-width:thin}
-  .tabs-nav a{display:block;padding:.75rem 0 .6rem;font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);text-decoration:none;white-space:nowrap;border-bottom:3px solid transparent}
-  .tabs-nav a:hover{color:var(--ink)}
-  .tabs-nav a.active{color:var(--ink);font-weight:600;border-bottom-color:var(--red)}
+  /* hamburger + slide-out menu (spreadsheet tabs + stats) */
+  .hamburger{display:flex;flex-direction:column;justify-content:center;gap:5px;width:44px;height:44px;padding:11px;background:none;border:1px solid var(--line);border-radius:var(--radius);cursor:pointer;flex:none}
+  .hamburger span{display:block;height:2px;background:var(--ink);border-radius:1px}
+  .hamburger:hover{border-color:var(--ink-2);background:var(--cream)}
+  .menu-overlay{position:fixed;inset:0;background:rgba(18,18,18,.45);z-index:80;display:none}
+  .menu-overlay.open{display:block}
+  .menu{position:fixed;top:0;left:0;bottom:0;width:min(320px,85vw);background:var(--paper);z-index:85;transform:translateX(-103%);transition:transform .22s ease;overflow-y:auto;box-shadow:12px 0 40px rgba(0,0,0,.18)}
+  .menu.open{transform:none}
+  .menu-head{background:var(--ink);color:#fff;padding:1.1rem 1.3rem;display:flex;align-items:center;justify-content:space-between;font-size:.8rem;letter-spacing:.22em;text-transform:uppercase;font-weight:600;position:sticky;top:0}
+  .menu-head .menu-close{background:none;border:none;color:#fff;font-size:1.4rem;cursor:pointer;line-height:1}
+  .menu-rule{display:flex;align-items:center;padding:0 1.3rem;margin:.4rem 0}
+  .menu-rule .bar{flex:1;height:2px;background:var(--red)}
+  .menu-rule .dot{width:7px;height:7px;border-radius:50%;background:var(--red);margin:0 5px;flex:none}
+  #menu-nav a{display:block;padding:.8rem 1.3rem;font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-2);text-decoration:none;border-bottom:1px solid var(--line);border-left:3px solid transparent}
+  #menu-nav a:hover{color:var(--ink);background:var(--cream)}
+  #menu-nav a.active{color:var(--ink);font-weight:600;border-left-color:var(--red);background:var(--cream)}
+  .menu-sep{padding:1rem 1.3rem .35rem;font-size:.64rem;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-3)}
 
   main{max-width:1280px;margin:0 auto;padding:2rem 1.5rem 4rem}
   h2.section-head{font-size:.8rem;letter-spacing:.24em;text-transform:uppercase;font-weight:600;color:var(--ink);margin:2.4rem 0 1rem}
@@ -74,7 +86,7 @@
   .hbar .val{font-variant-numeric:tabular-nums;color:var(--ink);font-size:.8rem}
 
   /* controls */
-  .controls{position:sticky;top:131px;z-index:30;background:var(--paper);padding:.9rem 0;border-bottom:1px solid var(--line);display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
+  .controls{position:sticky;top:var(--header-h,88px);z-index:30;background:var(--paper);padding:.9rem 0;border-bottom:1px solid var(--line);display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
   .controls input[type=search]{flex:1 1 260px;padding:.6rem .9rem;border:1px solid var(--ink-2);border-radius:var(--radius);font-size:.95rem;font-family:inherit}
   .controls input[type=search]:focus{outline:2px solid var(--red);outline-offset:1px;border-color:transparent}
   .controls select{padding:.6rem .7rem;border:1px solid var(--line);border-radius:var(--radius);font-size:.85rem;font-family:inherit;background:var(--paper);color:var(--ink);max-width:230px}
@@ -138,26 +150,24 @@
 
 <header class="site">
   <div class="site-inner">
+    <button class="hamburger" id="hamburger" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
     <img class="logo" src="assets/blp-logo.png" alt="Brigham Larson Pianos">
     <div class="site-title">Inventory History<strong>Piano Log</strong></div>
     <div class="refresh-note" id="meta-note"></div>
     <button class="btn" id="refresh" title="Re-read the Google Sheet now" style="padding:.5rem 1.1rem">Refresh</button>
   </div>
   <div class="red-rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
-  <nav class="tabs-nav" id="tabs-nav" aria-label="Spreadsheet tabs"></nav>
 </header>
+
+<div class="menu-overlay" id="menu-overlay"></div>
+<nav class="menu" id="menu" aria-label="Sections and spreadsheet tabs">
+  <div class="menu-head"><span>Menu</span><button class="menu-close" id="menu-close" aria-label="Close menu">×</button></div>
+  <div class="menu-rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
+  <div id="menu-nav"></div>
+</nav>
 
 <main>
 <div id="view-pianolog">
-  <h2 class="section-head">At a Glance</h2>
-  <div class="tiles" id="tiles"></div>
-
-  <div class="charts">
-    <div class="chart"><h3>Pianos by Section Group</h3><div id="chart-groups"></div></div>
-    <div class="chart"><h3>Top Makes (All Time)</h3><div id="chart-makes"></div></div>
-  </div>
-
-  <h2 class="section-head">Browse the Log</h2>
   <div class="controls">
     <input type="search" id="q" placeholder="Search make, model, serial, owner, notes…" autocomplete="off">
     <select id="f-group"><option value="">All Groups</option></select>
@@ -184,6 +194,16 @@
   </table>
   <div class="more-row" id="more-wrap" style="display:none"><button class="btn" id="more">Show more</button></div>
   <div class="empty" id="empty" style="display:none">No pianos match — try clearing a filter.</div>
+</div>
+
+<div id="view-stats" style="display:none">
+  <h2 class="section-head">At a Glance</h2>
+  <div class="tiles" id="tiles"></div>
+
+  <div class="charts">
+    <div class="chart"><h3>Pianos by Section Group</h3><div id="chart-groups"></div></div>
+    <div class="chart"><h3>Top Makes (All Time)</h3><div id="chart-makes"></div></div>
+  </div>
 </div>
 
 <div id="view-tab" style="display:none">
@@ -219,10 +239,16 @@ let DATA = null, view = [], shown = PAGE, sortKey = null, sortDir = 1;
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+// sticky filter bar sits flush under the (now tab-less) header
+const setHeaderH = () => document.documentElement.style.setProperty('--header-h',
+  document.querySelector('header.site').offsetHeight + 'px');
+setHeaderH(); addEventListener('resize', setHeaderH); addEventListener('load', setHeaderH);
+
 const GROUP_ORDER = ['Shopwork','Showroom','Storage','Rentals & Financing','On Premises','Digital','Web Archive','Sold / Exited','Other'];
 const badgeClass = g => g === 'Sold / Exited' ? 'sold' : g === 'Shopwork' ? 'shop' : g === 'Showroom' ? 'showroom' : '';
 
 const PIANO_TAB = 'Piano Log';
+const STATS_TAB = 'Stats';
 let TABS = [], activeTab = PIANO_TAB;
 const TAB_DATA = {};   // title -> generic tab payload
 let tView = [], tShown = PAGE, tSortCol = -1, tSortDir = 1, tCols = [];
@@ -246,31 +272,51 @@ function loadData(force){
     });
 }
 
+/* hamburger menu */
+const openMenu = () => { $('#menu').classList.add('open'); $('#menu-overlay').classList.add('open'); $('#hamburger').setAttribute('aria-expanded','true'); };
+const closeMenu = () => { $('#menu').classList.remove('open'); $('#menu-overlay').classList.remove('open'); $('#hamburger').setAttribute('aria-expanded','false'); };
+$('#hamburger').onclick = openMenu;
+$('#menu-close').onclick = closeMenu;
+$('#menu-overlay').onclick = closeMenu;
+
+function renderMenu(){
+  const link = t => `<a href="#${encodeURIComponent(t)}" data-tab="${esc(t)}">${esc(t)}</a>`;
+  const sheetTabs = TABS.filter(t => t !== PIANO_TAB);
+  $('#menu-nav').innerHTML =
+    link(PIANO_TAB) + link(STATS_TAB) +
+    (sheetTabs.length ? `<div class="menu-sep">Spreadsheet tabs</div>` + sheetTabs.map(link).join('') : '');
+  $('#menu-nav').onclick = e => {
+    const a = e.target.closest('a'); if(!a) return;
+    openTab(a.dataset.tab);
+  };
+  document.querySelectorAll('#menu-nav a').forEach(a =>
+    a.classList.toggle('active', a.dataset.tab === activeTab));
+}
+
 function loadTabs(){
   fetch('/api/tabs').then(r => r.json()).then(d => {
     TABS = (d.tabs || []).map(t => t.title);
     if (!TABS.includes(PIANO_TAB)) TABS.unshift(PIANO_TAB);
     TABS = [PIANO_TAB, ...TABS.filter(t => t !== PIANO_TAB)];
-    $('#tabs-nav').innerHTML = TABS.map(t =>
-      `<a href="#${encodeURIComponent(t)}" data-tab="${esc(t)}">${esc(t)}</a>`).join('');
-    $('#tabs-nav').onclick = e => {
-      const a = e.target.closest('a'); if(!a) return;
-      openTab(a.dataset.tab);
-    };
+    renderMenu();
     const fromHash = decodeURIComponent(location.hash.slice(1) || '');
-    openTab(TABS.includes(fromHash) ? fromHash : PIANO_TAB);
-  }).catch(() => { $('#tabs-nav').innerHTML = ''; });
+    openTab(TABS.includes(fromHash) || fromHash === STATS_TAB ? fromHash : PIANO_TAB);
+  }).catch(() => { TABS = [PIANO_TAB]; renderMenu(); });
 }
 
 function openTab(title){
   activeTab = title;
-  document.querySelectorAll('#tabs-nav a').forEach(a =>
+  if (decodeURIComponent(location.hash.slice(1) || '') !== title)
+    history.replaceState(null, '', '#' + encodeURIComponent(title));
+  document.querySelectorAll('#menu-nav a').forEach(a =>
     a.classList.toggle('active', a.dataset.tab === title));
-  const isPiano = title === PIANO_TAB;
+  const isPiano = title === PIANO_TAB, isStats = title === STATS_TAB;
   $('#view-pianolog').style.display = isPiano ? '' : 'none';
-  $('#view-tab').style.display = isPiano ? 'none' : '';
-  if (!isPiano) showTab(title);
+  $('#view-stats').style.display = isStats ? '' : 'none';
+  $('#view-tab').style.display = (isPiano || isStats) ? 'none' : '';
+  if (!isPiano && !isStats) showTab(title);
   else if (DATA) updateMeta();
+  closeMenu();
 }
 
 function showTab(title, force){
@@ -373,7 +419,7 @@ function openTabDrawer(d, r){
 }
 
 function updateMeta(tab){
-  if (activeTab === PIANO_TAB){
+  if (activeTab === PIANO_TAB || activeTab === STATS_TAB){
     if (!DATA) return;
     const src = DATA.live
       ? `<span style="color:#1a7a1a">●</span> Live from Google Sheets · ${esc(DATA.generated_at)}`
@@ -389,7 +435,7 @@ function updateMeta(tab){
 function init(){
   updateMeta();
   $('#refresh').onclick = () =>
-    activeTab === PIANO_TAB ? loadData(true) : showTab(activeTab, true);
+    (activeTab === PIANO_TAB || activeTab === STATS_TAB) ? loadData(true) : showTab(activeTab, true);
 
   const groups = {};
   DATA.pianos.forEach(p => groups[p.group] = (groups[p.group]||0)+1);
@@ -399,17 +445,18 @@ function init(){
     .concat(GROUP_ORDER.filter(g => groups[g]).map(g => [g, g, groups[g]]));
   $('#tiles').innerHTML = tileDefs.map(([g,l,n]) =>
     `<div class="tile" data-group="${esc(g)}"><div class="num">${n.toLocaleString()}</div><div class="lbl">${esc(l)}</div></div>`).join('');
+  // clicking a stat filters the log and jumps to it
   $('#tiles').onclick = e => {
     const t = e.target.closest('.tile'); if(!t) return;
     $('#f-group').value = t.dataset.group; $('#f-section').value = '';
-    apply();
+    apply(); openTab(PIANO_TAB);
   };
 
   // charts
-  hbars('#chart-groups', GROUP_ORDER.filter(g=>groups[g]).map(g=>[g,groups[g]]), g => { $('#f-group').value = g; apply(); });
+  hbars('#chart-groups', GROUP_ORDER.filter(g=>groups[g]).map(g=>[g,groups[g]]), g => { $('#f-group').value = g; apply(); openTab(PIANO_TAB); });
   const makes = {};
   DATA.pianos.forEach(p => { const m = (p.make||'').trim(); if(m) makes[m] = (makes[m]||0)+1; });
-  hbars('#chart-makes', Object.entries(makes).sort((a,b)=>b[1]-a[1]).slice(0,12), m => { $('#f-make').value = m; apply(); });
+  hbars('#chart-makes', Object.entries(makes).sort((a,b)=>b[1]-a[1]).slice(0,12), m => { $('#f-make').value = m; apply(); openTab(PIANO_TAB); });
 
   // filter options
   fillSelect('#f-group', GROUP_ORDER.filter(g=>groups[g]));
@@ -433,7 +480,7 @@ function init(){
   });
 
   $('#overlay').onclick = closeDrawer;
-  document.onkeydown = e => { if(e.key==='Escape') closeDrawer(); };
+  document.onkeydown = e => { if(e.key==='Escape'){ closeDrawer(); closeMenu(); } };
 
   apply();
 
