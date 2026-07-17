@@ -378,7 +378,7 @@ function updateMeta(tab){
     const src = DATA.live
       ? `<span style="color:#1a7a1a">●</span> Live from Google Sheets · ${esc(DATA.generated_at)}`
       : `<span style="color:var(--red)">●</span> Offline snapshot: ${esc(DATA.generated_at)}${DATA.error ? ' · sheet unreachable' : ''}`;
-    $('#meta-note').innerHTML = `${src}<br>${DATA.pianos.length.toLocaleString()} pianos · ${DATA.sections.length} sections`;
+    $('#meta-note').innerHTML = `${src}<br>${DATA.pianos.length.toLocaleString()} pianos · ${DATA.sections.length} sections${DATA.role==='tech'?' · technician view':''}`;
   } else if (tab || TAB_DATA[activeTab]) {
     const d = tab || TAB_DATA[activeTab];
     $('#meta-note').innerHTML = `<span style="color:#1a7a1a">●</span> Live from Google Sheets · ${esc(d.generated_at)}<br>${d.rows.length.toLocaleString()} rows`;
@@ -569,7 +569,7 @@ function openDrawer(p){
     </div>
     <div class="drawer-body">
       ${links.length?`<div class="linkchips">${links.map(([l,u])=>`<a href="${esc(u.trim().split(/\s/)[0])}" target="_blank" rel="noopener">${l}</a>`).join('')}</div>`:''}
-      ${p.owner?field('Owner / Contact', p.owner):''}
+      ${p.owner?field('Owner / Contact', p.owner):(p.owner_name?field('Owner', p.owner_name):'')}
       ${p.qb_owner?field('Owner (QuickBooks match)', [p.qb_owner, p.qb_email, p.qb_address, p.qb_city_state, p.qb_sale_date?'Sale date: '+p.qb_sale_date:'', p.qb_matched_serial?'Matched serial: '+p.qb_matched_serial:''].filter(Boolean).join('\n')):''}
       <div class="fields-2">${FIELDS.map(([l,k])=>p[k]?field(l,String(p[k])):'').join('')}</div>
       ${p.notes?field('Notes', p.notes):''}
