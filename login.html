@@ -73,9 +73,12 @@
   }
   (function initGsi() {
     if (!window.google || !google.accounts) { setTimeout(initGsi, 250); return; }
-    google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCredential });
+    // auto_select + prompt(): anyone already signed into the Shop App with
+    // the same Google account gets logged in here silently — no second login.
+    google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCredential, auto_select: true });
     google.accounts.id.renderButton(document.getElementById('gbtn'),
       { theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', width: 280 });
+    google.accounts.id.prompt();
   })();
 </script>
 </body></html>
