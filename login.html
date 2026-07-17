@@ -33,5 +33,9 @@
 <script>
   if (new URLSearchParams(location.search).get('error'))
     document.getElementById('err').style.display = 'block';
+  // Preserve a deep link (?next=…) across the login redirect — index.html
+  // picks it up from sessionStorage after sign-in.
+  const next = new URLSearchParams(location.search).get('next');
+  if (next) sessionStorage.setItem('pianolog.next', next);
 </script>
 </body></html>

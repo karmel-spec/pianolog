@@ -234,7 +234,7 @@ function loadData(force){
   const note = $('#meta-note');
   note.textContent = force ? 'Refreshing from Google Sheets…' : 'Loading…';
   return fetch('/api/pianos' + (force ? '?force=1' : ''))
-    .then(r => { if(r.status===401){ location.href='/login.html'; throw new Error('auth'); } if(!r.ok) throw new Error('api ' + r.status); return r.json(); })
+    .then(r => { if(r.status===401){ location.href='/login.html' + (location.search ? '?next=' + encodeURIComponent(location.search) : ''); throw new Error('auth'); } if(!r.ok) throw new Error('api ' + r.status); return r.json(); })
     .catch(e => {
       if (e.message === 'auth') throw e;
       return fetch('data/pianos.json').then(r => r.json()).then(d => (d.live = false, d));
@@ -436,6 +436,26 @@ function init(){
   document.onkeydown = e => { if(e.key==='Escape') closeDrawer(); };
 
   apply();
+
+  // Deep link: ?q=<serial or search> (e.g. from the Shop Reports app).
+  // If the query pinpoints one piano by serial, open its drawer directly.
+  // sessionStorage carries the query across the login redirect (see login.html).
+  let deepQ = new URLSearchParams(location.search).get('q');
+  if (!deepQ && sessionStorage.getItem('pianolog.next')){
+    deepQ = new URLSearchParams(sessionStorage.getItem('pianolog.next')).get('q');
+    if (deepQ) history.replaceState(null, '', '/?q=' + encodeURIComponent(deepQ));
+  }
+  sessionStorage.removeItem('pianolog.next');
+  if (deepQ){
+    $('#q').value = deepQ;
+    apply();
+    const digits = s => String(s||'').replace(/\D/g,'');
+    const dq = digits(deepQ);
+    const bySerial = dq.length >= 4
+      ? DATA.pianos.filter(p => digits(firstLine(p.serial)) === dq) : [];
+    const target = bySerial.length === 1 ? bySerial[0] : (view.length === 1 ? view[0] : null);
+    if (target) openDrawer(target);
+  }
 }
 
 function fillSelect(sel, items){
