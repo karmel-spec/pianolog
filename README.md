@@ -31,12 +31,30 @@ in a detail drawer. New tabs added to the sheet appear automatically
 > **Note:** `data/` is not committed — the snapshots contain customer contact
 > info and this repo is public. The server regenerates them on first fetch.
 
-## Password
+## Sign-in & roles
 
-The app is password-protected (branded sign-in page; session cookie, valid
-until the server restarts). The password is **not** in this repo — it lives in
-`data/password.txt` (gitignored) or the `PIANOLOG_PASSWORD` env var. If
-neither exists, the app runs open with no password.
+Sign-in is **Google** (same OAuth client as BLPShop), with the admin password
+as a collapsed fallback on the login page. The password is **not** in this
+repo — it lives in `data/password.txt` (gitignored) or the `PIANOLOG_PASSWORD`
+env var. If neither exists, the local app runs open (as admin) for dev.
+
+Roles are managed in the **App Access** tab of the spreadsheet — one row per
+person: Email + Role. Changes take effect within ~5 minutes, no redeploy:
+
+- **Admin** — full access. Automatic for `@brighamlarsonpianos.com` accounts;
+  grantable to any email via an App Access row (or the `PIANOLOG_ADMINS` env
+  var).
+- **Tech** — automatic for `firstlast.blp@gmail.com` gmails. Technicians never
+  receive pricing or owner contact data (`owner`, agreements/finance,
+  COGS/invoice, QBO, iSolved, down payments — filtered **server-side**), and
+  the raw spreadsheet-tab browser is admin-only.
+- **Blocked** — shuts an account out entirely; overrides the tech pattern.
+  Google sessions are re-checked against the roster on every request, so
+  blocking someone locks them out mid-session (within the 5-minute cache),
+  not 30 days later when their cookie expires.
+
+The same rules run in both deployments: `netlify/functions/lib/auth.js`
+(hosted) and `server.py` (local).
 
 ## Structure
 

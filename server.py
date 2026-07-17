@@ -10,11 +10,17 @@ Each successful fetch also updates data/pianolog-raw.json and
 data/pianos.json, which serve as the offline fallback if Google is
 unreachable.
 
+Auth matches the deployed Netlify version: Google Sign-In with roles from
+the "App Access" spreadsheet tab (admins see everything; technicians never
+receive pricing or owner contact data), plus the legacy admin password.
+With no password configured the app runs open as admin (local dev).
+
 Run: python3 server.py   (port 8412)
 Requires: gog authenticated as karmel@brighamlarsonpianos.com
 """
 import http.server, json, os, re, secrets, subprocess, sys, threading, time
-from urllib.parse import urlparse, parse_qs
+import urllib.request
+from urllib.parse import urlparse, parse_qs, quote
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts'))
 from parse import parse  # noqa: E402
@@ -40,40 +46,119 @@ def load_password():
     return None
 
 PASSWORD = load_password()
-SESSIONS = set()   # valid session tokens (reset on server restart)
+SESSIONS = {}   # token -> {'role': 'admin'|'tech', 'email': str}; reset on restart
 
-LOGIN_HTML = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in — Piano Log</title>
-<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600&display=swap" rel="stylesheet">
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Assistant',sans-serif;background:#121212;min-height:100vh;
-       display:flex;align-items:center;justify-content:center;padding:1.5rem}
-  .card{background:#fff;border-radius:8px;padding:2.5rem 2.2rem;max-width:380px;width:100%;text-align:center}
-  .card img{width:240px;max-width:100%}
-  .rule{display:flex;align-items:center;margin:1.4rem 0}
-  .rule .bar{flex:1;height:2px;background:#9e2020}
-  .rule .dot{width:7px;height:7px;border-radius:50%;background:#9e2020;margin:0 5px}
-  h1{font-size:.8rem;letter-spacing:.24em;text-transform:uppercase;color:#4a4a4a;font-weight:600}
-  input{width:100%;margin-top:1.2rem;padding:.75rem 1rem;font-size:1rem;font-family:inherit;
-        border:1px solid #bbb;border-radius:6px}
-  input:focus{outline:2px solid #9e2020;border-color:transparent}
-  button{width:100%;margin-top:.8rem;padding:.8rem;background:#9e2020;color:#fff;border:none;
-         border-radius:6px;font-size:.9rem;letter-spacing:.14em;text-transform:uppercase;
-         font-family:inherit;cursor:pointer}
-  button:hover{background:#b43333}
-  .err{margin-top:.9rem;color:#9e2020;font-size:.85rem}
-</style></head><body>
-<form class="card" method="post" action="/login">
-  <img src="/assets/blp-logo.png" alt="Brigham Larson Pianos">
-  <div class="rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
-  <h1>Piano Log &amp; Inventory</h1>
-  <input type="password" name="password" placeholder="Password" autofocus autocomplete="current-password">
-  <button type="submit">Sign in</button>
-  {{ERROR}}
-</form></body></html>"""
+# --- Roles (mirrors netlify/functions/lib/auth.js) -----------------------
+# Google sign-in maps an email to a role. The "App Access" spreadsheet tab
+# (Email | Role | Notes) is the roster Brigham manages; company-domain
+# accounts are always admin; the static fallbacks below cover everyone else.
+GOOGLE_CLIENT_ID = '118454775893-17u7t3glh8eu4kffhe7b42jl71apre4f.apps.googleusercontent.com'
+ADMIN_DOMAIN = 'brighamlarsonpianos.com'
+ADMIN_EMAILS = [
+    'brighamlarson@gmail.com',
+    'brighamlarsonpianos@gmail.com',
+    'pianoshop.blp@gmail.com',
+]
+TECH_RE = re.compile(r'^[a-z0-9.]+\.blp@gmail\.com$', re.I)
+ROSTER_TAB = 'App Access'
+ROSTER_TTL = 300  # seconds; also how fast a Blocked row takes effect
+
+# Fields technicians never receive: pricing, accounting links, and raw owner
+# contact text. Keep in sync with netlify/functions/pianos.js.
+TECH_HIDDEN_FIELDS = [
+    'owner', 'agreements_price', 'cogs_invoice', 'down_payment_date',
+    'qbo', 'isolved_job', 'qb_email', 'qb_address', 'qb_sale_date',
+]
+
+_roster = {'data': None, 'at': 0.0}
+_roster_lock = threading.Lock()
+
+def verify_google_token(credential):
+    """Verify a Google Sign-In ID token; returns the verified email or None."""
+    try:
+        with urllib.request.urlopen(
+                'https://oauth2.googleapis.com/tokeninfo?id_token=' + quote(credential),
+                timeout=10) as r:
+            info = json.load(r)
+    except Exception:
+        return None
+    if info.get('aud') != GOOGLE_CLIENT_ID:
+        return None
+    if str(info.get('email_verified')).lower() != 'true':
+        return None
+    try:
+        if float(info.get('exp', 0)) < time.time():
+            return None
+    except ValueError:
+        return None
+    return (info.get('email') or '').lower() or None
+
+def normalize_roster_role(s):
+    s = str(s or '').strip().lower()
+    if re.match(r'^(admin|administrator|owner|full)', s):
+        return 'admin'
+    if re.match(r'^(tech|technician|limited)', s):
+        return 'tech'
+    if re.match(r'^(block|blocked|none|no access|no|off|revoked|denied)', s):
+        return 'blocked'
+    return None  # unrecognized -> ignore the row
+
+def roster_roles():
+    """email(lowercase) -> 'admin'|'tech'|'blocked' from the App Access tab."""
+    with _roster_lock:
+        if _roster['data'] is not None and time.time() - _roster['at'] < ROSTER_TTL:
+            return _roster['data']
+        values = gog_json('get', SHEET_ID, f"'{ROSTER_TAB}'!A1:C500").get('values', [])
+        roles = {}
+        for row in values:
+            email = str(row[0] if row else '').strip().lower()
+            if '@' not in email:
+                continue  # header, blanks, the how-to note
+            role = normalize_roster_role(row[1] if len(row) > 1 else '')
+            if role:
+                roles[email] = role
+        _roster.update(data=roles, at=time.time())
+        return roles
+
+def role_for_email(email):
+    """Static fallback rules (no roster)."""
+    email = (email or '').lower()
+    extra = [e.strip().lower() for e in os.environ.get('PIANOLOG_ADMINS', '').split(',') if e.strip()]
+    if email.endswith('@' + ADMIN_DOMAIN):
+        return 'admin'
+    if email in ADMIN_EMAILS or email in extra:
+        return 'admin'
+    if TECH_RE.match(email):
+        return 'tech'
+    return None
+
+def resolve_role(email):
+    """Company domain first, then the sheet roster, then static fallbacks.
+    Degrades to the static rules if the roster is unreachable."""
+    email = (email or '').lower()
+    if not email:
+        return None
+    if email.endswith('@' + ADMIN_DOMAIN):
+        return 'admin'
+    try:
+        listed = roster_roles().get(email)
+    except Exception:
+        listed = None  # sheet unreachable -> static rules only
+    if listed == 'blocked':
+        return None
+    if listed:
+        return listed
+    return role_for_email(email)
+
+def effective_role(session):
+    """Role to enforce for this request. Google sessions are re-checked
+    against the roster so a Blocked row takes effect within ROSTER_TTL."""
+    if not session:
+        return None
+    email = session.get('email', '')
+    if '@' not in email:
+        return session.get('role')  # password / dev-open sessions
+    return resolve_role(email)
 
 _cache = {'data': None, 'at': 0.0}
 _tab_cache = {}   # title -> {'data':..., 'at':...}
@@ -198,40 +283,64 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=DIR, **kw)
 
-    def is_authed(self):
+    def get_session(self):
+        """Session dict {'role','email'} or None. With no password configured
+        the app runs open as admin (local dev), matching the old behavior."""
         if not PASSWORD:
-            return True
+            return {'role': 'admin', 'email': ''}
         for part in self.headers.get('Cookie', '').split(';'):
             k, _, v = part.strip().partition('=')
             if k == 'plsession' and v in SESSIONS:
-                return True
-        return False
+                return SESSIONS[v]
+        return None
 
-    def send_login(self, error=False, status=200):
-        body = LOGIN_HTML.replace('{{ERROR}}',
-            '<div class="err">Incorrect password — try again.</div>' if error else '').encode()
-        self.send_response(status)
-        self.send_header('Content-Type', 'text/html; charset=utf-8')
-        self.send_header('Cache-Control', 'no-store')
-        self.send_header('Content-Length', str(len(body)))
+    def start_session(self, role, email):
+        tok = secrets.token_hex(16)
+        SESSIONS[tok] = {'role': role, 'email': email}
+        return f'plsession={tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000'
+
+    def redirect(self, location, cookie=None):
+        self.send_response(303)
+        if cookie:
+            self.send_header('Set-Cookie', cookie)
+        self.send_header('Location', location)
         self.end_headers()
-        self.wfile.write(body)
 
     def do_POST(self):
         if urlparse(self.path).path in ('/login', '/api/login'):
             n = int(self.headers.get('Content-Length', 0))
-            pw = parse_qs(self.rfile.read(n).decode()).get('password', [''])[0]
-            if PASSWORD and secrets.compare_digest(pw, PASSWORD):
-                tok = secrets.token_hex(16)
-                SESSIONS.add(tok)
-                self.send_response(303)
-                self.send_header('Set-Cookie',
-                    f'plsession={tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000')
-                self.send_header('Location', '/')
+            body = self.rfile.read(n).decode()
+
+            # Google Sign-In: JSON {credential: <ID token>} posted by login.html.
+            if 'application/json' in self.headers.get('Content-Type', ''):
+                try:
+                    credential = json.loads(body).get('credential', '')
+                except ValueError:
+                    credential = ''
+                email = credential and verify_google_token(credential)
+                if not email:
+                    return self.send_json({'ok': False,
+                        'error': 'Google sign-in could not be verified.'}, 401)
+                role = resolve_role(email)
+                if not role:
+                    return self.send_json({'ok': False,
+                        'error': f'{email} is not authorized for the Piano Log. Ask Brigham to add you.'}, 403)
+                cookie = self.start_session(role, email)
+                body = json.dumps({'ok': True, 'role': role, 'email': email}).encode()
+                self.send_response(200)
+                self.send_header('Set-Cookie', cookie)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Cache-Control', 'no-store')
+                self.send_header('Content-Length', str(len(body)))
                 self.end_headers()
-            else:
-                self.send_login(error=True)
-            return
+                self.wfile.write(body)
+                return
+
+            # Legacy admin password form.
+            pw = parse_qs(body).get('password', [''])[0]
+            if PASSWORD and secrets.compare_digest(pw, PASSWORD):
+                return self.redirect('/', cookie=self.start_session('admin', 'password-login'))
+            return self.redirect('/login.html?error=1')
         self.send_response(404)
         self.end_headers()
 
@@ -251,15 +360,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         u = urlparse(self.path)
         q = parse_qs(u.query)
         force = q.get('force', ['0'])[0] == '1'
-        if not self.is_authed():
-            if u.path == '/assets/blp-logo.png':   # the login page needs the logo
+        session = self.get_session()
+        # Google sessions are re-checked against the roster each request, so a
+        # Blocked row in the App Access tab takes effect within ROSTER_TTL.
+        role = effective_role(session)
+        if not role:
+            if u.path in ('/login.html', '/assets/blp-logo.png'):
                 return super().do_GET()
             if u.path.startswith('/api/'):
                 return self.send_json({'error': 'authentication required'}, 401)
-            return self.send_login()
+            return self.redirect('/login.html' +
+                (f'?next={quote("?" + u.query)}' if u.query else ''))
         try:
             if u.path == '/api/pianos':
-                return self.send_json(get_pianos(force=force))
+                data = get_pianos(force=force)
+                if role == 'tech':
+                    # copy, never mutate the shared cache
+                    data = dict(data, pianos=[
+                        {k: v for k, v in p.items() if k not in TECH_HIDDEN_FIELDS}
+                        for p in data['pianos']])
+                return self.send_json(dict(data, role=role))
+            # Raw spreadsheet tabs can hold pricing and accounting — admins only.
+            if u.path in ('/api/tabs', '/api/tab') and role != 'admin':
+                return self.send_json({'error': 'The tab browser is admin-only.'}, 403)
             if u.path == '/api/tabs':
                 with _lock:
                     return self.send_json({'tabs': list_tabs(force=force)})

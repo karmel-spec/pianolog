@@ -1,7 +1,13 @@
 // Auth for the Netlify functions: Google Sign-In (role-based) with a legacy
 // admin-password fallback. Stateless signed cookie, valid 30 days.
 // Cookie: plsession=<ts>.<role>.<email-b64url>.<hmac>
+//
+// Roles come from the "App Access" tab of the spreadsheet (Email | Role rows,
+// managed by Brigham — see the note on its A1 cell), layered over the static
+// rules below. The roster is re-checked on every API request, so marking a
+// row Blocked locks that account out within the sheet cache TTL (~5 min).
 const crypto = require('crypto');
+const { getTabValues } = require('./sheets');
 
 const MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 const GOOGLE_CLIENT_ID =
@@ -26,6 +32,58 @@ function roleForEmail(email) {
   if (ADMIN_EMAILS.includes(email) || extraAdmins.includes(email)) return 'admin';
   if (TECH_RE.test(email)) return 'tech';
   return null;  // not authorized
+}
+
+// --- Spreadsheet roster ("App Access" tab: Email | Role | Notes) ---------
+const ROSTER_TAB = 'App Access';
+
+function normalizeRosterRole(s) {
+  s = String(s || '').trim().toLowerCase();
+  if (/^(admin|administrator|owner|full)/.test(s)) return 'admin';
+  if (/^(tech|technician|limited)/.test(s)) return 'tech';
+  if (/^(block|blocked|none|no access|no|off|revoked|denied)/.test(s)) return 'blocked';
+  return null;  // unrecognized -> ignore the row
+}
+
+/** email(lowercase) -> 'admin' | 'tech' | 'blocked', from the App Access tab. */
+async function rosterRoles() {
+  const values = (await getTabValues(ROSTER_TAB)).values || [];
+  const roles = {};
+  for (const row of values) {
+    const email = String(row[0] || '').trim().toLowerCase();
+    if (!email.includes('@')) continue;  // header, blanks, the how-to note
+    const role = normalizeRosterRole(row[1]);
+    if (role) roles[email] = role;
+  }
+  return roles;
+}
+
+/**
+ * Full role resolution: company domain always wins (those accounts are
+ * centrally managed), then the sheet roster, then the static fallbacks.
+ * If the roster is unreachable, degrades to the static rules alone.
+ */
+async function resolveRole(email) {
+  email = String(email || '').toLowerCase();
+  if (!email) return null;
+  if (email.endsWith('@' + ADMIN_DOMAIN)) return 'admin';
+  let roster = {};
+  try { roster = await rosterRoles(); } catch (e) { /* sheet unreachable */ }
+  const listed = roster[email];
+  if (listed === 'blocked') return null;
+  if (listed) return listed;
+  return roleForEmail(email);
+}
+
+/**
+ * Role to enforce for this request: password sessions keep their cookie role;
+ * Google sessions are re-checked against the roster so revocations take
+ * effect without waiting 30 days for the cookie to expire.
+ */
+async function effectiveRole(session) {
+  if (!session) return null;
+  if (!session.email || !session.email.includes('@')) return session.role;
+  return resolveRole(session.email);
 }
 
 /** Verify a Google Sign-In ID token; returns the verified email or null. */
@@ -102,4 +160,5 @@ const forbidden = (msg) => ({
 });
 
 module.exports = { makeCookie, isAuthed, getSession, checkPassword,
-                   verifyGoogleToken, roleForEmail, unauthorized, forbidden };
+                   verifyGoogleToken, roleForEmail, resolveRole, effectiveRole,
+                   unauthorized, forbidden };

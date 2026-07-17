@@ -1,4 +1,4 @@
-const { makeCookie, checkPassword, verifyGoogleToken, roleForEmail } = require('./lib/auth');
+const { makeCookie, checkPassword, verifyGoogleToken, resolveRole } = require('./lib/auth');
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -17,7 +17,7 @@ exports.handler = async (event) => {
       return { statusCode: 401, headers: { 'Content-Type': 'application/json' },
                body: JSON.stringify({ ok: false, error: 'Google sign-in could not be verified.' }) };
     }
-    const role = roleForEmail(email);
+    const role = await resolveRole(email);
     if (!role) {
       return { statusCode: 403, headers: { 'Content-Type': 'application/json' },
                body: JSON.stringify({ ok: false, error: `${email} is not authorized for the Piano Log. Ask Brigham to add you.` }) };

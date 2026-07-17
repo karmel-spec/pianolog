@@ -1,4 +1,4 @@
-const { getSession, unauthorized } = require('./lib/auth');
+const { getSession, effectiveRole, unauthorized } = require('./lib/auth');
 const { getTabValues } = require('./lib/sheets');
 const { parse } = require('./lib/parse');
 
@@ -18,13 +18,15 @@ const TECH_HIDDEN_FIELDS = [
 exports.handler = async (event) => {
   const session = getSession(event);
   if (!session) return unauthorized();
+  const role = await effectiveRole(session);   // roster re-check: revoked -> 401
+  if (!role) return unauthorized();
   const force = (event.queryStringParameters || {}).force === '1';
   try {
     const raw = await getTabValues('Piano Log', force);
     const data = parse(raw.values || []);
     data.live = true;
-    data.role = session.role;
-    if (session.role === 'tech') {
+    data.role = role;
+    if (role === 'tech') {
       for (const p of data.pianos) {
         for (const f of TECH_HIDDEN_FIELDS) delete p[f];
       }
