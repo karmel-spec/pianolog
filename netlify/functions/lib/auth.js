@@ -4,8 +4,17 @@ const crypto = require('crypto');
 
 const MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 
+// Shared shop password — same convention as data/password.txt for local dev.
+// Override in Netlify's dashboard (Site settings -> Environment variables)
+// by setting PIANOLOG_PASSWORD if you want a different value in production.
+const DEFAULT_PASSWORD = 'pianoman';
+
+function password() {
+  return process.env.PIANOLOG_PASSWORD || DEFAULT_PASSWORD;
+}
+
 function secret() {
-  return process.env.SESSION_SECRET || process.env.PIANOLOG_PASSWORD || '';
+  return process.env.SESSION_SECRET || password();
 }
 
 function sign(ts) {
@@ -18,7 +27,6 @@ function makeCookie() {
 }
 
 function isAuthed(event) {
-  if (!process.env.PIANOLOG_PASSWORD) return true;  // no password configured -> open
   const header = event.headers.cookie || event.headers.Cookie || '';
   for (const part of header.split(';')) {
     const eq = part.indexOf('=');
@@ -39,9 +47,9 @@ function isAuthed(event) {
 }
 
 function checkPassword(pw) {
-  const want = process.env.PIANOLOG_PASSWORD || '';
+  const want = password();
   const a = Buffer.from(String(pw)), b = Buffer.from(want);
-  return want && a.length === b.length && crypto.timingSafeEqual(a, b);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 const unauthorized = () => ({
