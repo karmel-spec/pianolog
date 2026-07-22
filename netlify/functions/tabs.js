@@ -1,8 +1,11 @@
-const { isAuthed, unauthorized } = require('./lib/auth');
+const { getSession, effectiveRole, unauthorized, forbidden } = require('./lib/auth');
 const { getTabList } = require('./lib/sheets');
 
 exports.handler = async (event) => {
-  if (!isAuthed(event)) return unauthorized();
+  const session = getSession(event);
+  if (!session) return unauthorized();
+  // Raw spreadsheet tabs can hold pricing and accounting — admins only.
+  if (await effectiveRole(session) !== 'admin') return forbidden('The tab browser is admin-only.');
   const force = (event.queryStringParameters || {}).force === '1';
   try {
     const data = await getTabList(force);

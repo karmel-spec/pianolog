@@ -3,6 +3,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sign in — Piano Log</title>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async></script>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:'Assistant',sans-serif;background:#121212;min-height:100vh;
@@ -13,25 +14,71 @@
   .rule .bar{flex:1;height:2px;background:#9e2020}
   .rule .dot{width:7px;height:7px;border-radius:50%;background:#9e2020;margin:0 5px}
   h1{font-size:.8rem;letter-spacing:.24em;text-transform:uppercase;color:#4a4a4a;font-weight:600}
-  input{width:100%;margin-top:1.2rem;padding:.75rem 1rem;font-size:1rem;font-family:inherit;
+  #gbtn{display:flex;justify-content:center;margin-top:1.4rem;min-height:44px}
+  .hint{margin-top:1rem;color:#6b6b6b;font-size:.82rem;line-height:1.5}
+  .err{margin-top:.9rem;color:#9e2020;font-size:.85rem;display:none}
+  details{margin-top:1.4rem;text-align:center}
+  summary{color:#9a9a9a;font-size:.78rem;cursor:pointer;list-style:none}
+  summary:hover{color:#9e2020}
+  input{width:100%;margin-top:1rem;padding:.75rem 1rem;font-size:1rem;font-family:inherit;
         border:1px solid #bbb;border-radius:6px}
   input:focus{outline:2px solid #9e2020;border-color:transparent}
-  button{width:100%;margin-top:.8rem;padding:.8rem;background:#9e2020;color:#fff;border:none;
+  form button{width:100%;margin-top:.8rem;padding:.8rem;background:#9e2020;color:#fff;border:none;
          border-radius:6px;font-size:.9rem;letter-spacing:.14em;text-transform:uppercase;
          font-family:inherit;cursor:pointer}
-  button:hover{background:#b43333}
-  .err{margin-top:.9rem;color:#9e2020;font-size:.85rem;display:none}
+  form button:hover{background:#b43333}
 </style></head><body>
-<form class="card" method="post" action="/api/login">
+<div class="card">
   <img src="/assets/blp-logo.png" alt="Brigham Larson Pianos">
   <div class="rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
   <h1>Piano Log &amp; Inventory</h1>
-  <input type="password" name="password" placeholder="Password" autofocus autocomplete="current-password">
-  <button type="submit">Sign in</button>
-  <div class="err" id="err">Incorrect password — try again.</div>
-</form>
+  <div id="gbtn"></div>
+  <div class="hint">Sign in with your BLP Google account.<br>Technicians see piano and work details; pricing and owner contact info stay office-only.</div>
+  <div class="err" id="err"></div>
+  <details>
+    <summary>Admin password sign-in</summary>
+    <form method="post" action="/api/login">
+      <input type="password" name="password" placeholder="Admin password" autocomplete="current-password">
+      <button type="submit">Sign in</button>
+    </form>
+  </details>
+</div>
 <script>
-  if (new URLSearchParams(location.search).get('error'))
-    document.getElementById('err').style.display = 'block';
+  const CLIENT_ID = '118454775893-17u7t3glh8eu4kffhe7b42jl71apre4f.apps.googleusercontent.com';
+  const err = document.getElementById('err');
+  if (new URLSearchParams(location.search).get('error')) {
+    err.textContent = 'Incorrect password — try again.';
+    err.style.display = 'block';
+  }
+  // Preserve a deep link (?next=…) across the login redirect — index.html
+  // picks it up from sessionStorage after sign-in.
+  const next = new URLSearchParams(location.search).get('next');
+  if (next) sessionStorage.setItem('pianolog.next', next);
+
+  async function onCredential(resp) {
+    err.style.display = 'none';
+    try {
+      const r = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential: resp.credential }),
+      });
+      const out = await r.json();
+      if (out.ok) { location.href = '/'; return; }
+      err.textContent = out.error || 'Sign-in failed.';
+    } catch (e) {
+      err.textContent = 'Sign-in failed — check your connection and try again.';
+    }
+    err.style.display = 'block';
+  }
+  (function initGsi() {
+    if (!window.google || !google.accounts) { setTimeout(initGsi, 250); return; }
+    // auto_select + prompt(): anyone already signed into the Shop App with
+    // the same Google account gets logged in here silently — no second login.
+    google.accounts.id.initialize({ client_id: CLIENT_ID, callback: onCredential, auto_select: true });
+    google.accounts.id.renderButton(document.getElementById('gbtn'),
+      { theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', width: 280 });
+    google.accounts.id.prompt();
+  })();
 </script>
 </body></html>
