@@ -128,6 +128,23 @@
   .foot-inner{max-width:1280px;margin:0 auto;padding:2rem 1.5rem;font-size:.8rem;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
   footer .brand{color:#fff;letter-spacing:.2em;text-transform:uppercase;font-weight:600}
 
+  /* drawer edit mode */
+  .drawer .edit-btn{position:absolute;top:.95rem;right:3.1rem;background:none;border:1px solid #777;color:#fff;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;padding:.32rem .85rem;border-radius:999px;cursor:pointer}
+  .drawer .edit-btn:hover{border-color:#fff;background:rgba(255,255,255,.08)}
+  .efield{margin-bottom:.9rem}
+  .efield label{display:block;font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);margin-bottom:.25rem}
+  .efield input,.efield textarea{width:100%;padding:.5rem .65rem;border:1px solid #bbb;border-radius:var(--radius);font-size:.88rem;font-family:inherit;color:var(--ink)}
+  .efield input:focus,.efield textarea:focus{outline:2px solid var(--red);border-color:transparent}
+  .efield textarea{min-height:5.2rem;resize:vertical}
+  .edit-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 1.2rem}
+  .edit-hint{font-size:.74rem;color:var(--ink-3);margin-top:.4rem;line-height:1.5}
+  .edit-actions{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-top:1rem;position:sticky;bottom:0;background:var(--paper);padding:.85rem 0;border-top:1px solid var(--line)}
+  .btn.ghost{background:none;color:var(--ink-2);border:1px solid var(--line)}
+  .btn.ghost:hover{background:var(--paper-2);color:var(--ink)}
+  .btn:disabled{opacity:.55;cursor:default}
+  .save-msg{font-size:.8rem;color:var(--red);flex:1 1 12rem}
+  .save-msg.ok{color:#1a7a1a}
+
   /* chart tooltip */
   #tip{position:fixed;pointer-events:none;background:var(--ink);color:#fff;font-size:.78rem;padding:.4rem .6rem;border-radius:4px;z-index:90;display:none;white-space:nowrap}
 </style>
@@ -539,12 +556,14 @@ function openDrawer(p){
   const links = [['Before Photos',p.before_photos],['After Photos',p.after_photos],
                  ['Before Video',p.before_video],['After Video',p.after_video]]
     .filter(([,u]) => /^https?:/.test((u||'').trim()));
+  const canEdit = DATA && DATA.live && String(p.serial||'').trim();
   $('#drawer').innerHTML = `
     <div class="drawer-head">
       <button class="close" aria-label="Close">×</button>
+      ${canEdit?'<button class="edit-btn">Edit</button>':''}
       <div class="kicker">${esc(p.section)}</div>
       <h3>${esc(p.summary || [p.year,p.make,p.model].filter(Boolean).join(' '))}</h3>
-      <div class="serial">Serial ${esc(p.serial)||'—'}</div>
+      <div class="serial">Serial ${esc(p.serial)||'—'}${!String(p.serial||'').trim()?' · add a serial in the sheet to edit here':(DATA&&!DATA.live?' · editing needs a live sheet connection':'')}</div>
       <div class="drawer-rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
     </div>
     <div class="drawer-body">
@@ -557,9 +576,85 @@ function openDrawer(p){
       ${p.tags?field('Tags', p.tags):''}
     </div>`;
   $('#drawer').querySelector('.close').onclick = closeDrawer;
+  if (canEdit) $('#drawer').querySelector('.edit-btn').onclick = () => openEditDrawer(p);
   $('#overlay').classList.add('open');
   $('#drawer').classList.add('open');
   $('#drawer').scrollTop = 0;
+}
+
+// Fields the app may write back to the sheet. Keep in sync with WRITABLE in
+// server.py and apps-script/Code.gs (those are the enforced whitelists).
+const EDITABLE = [
+  ['Summary','summary'],['Year','year'],['Make','make'],['Model','model'],
+  ['Size','size'],['Finish','finish'],['Sheen','sheen'],['Trim','trim'],
+  ['Status','status'],['Project Category','project_category'],
+  ['Completion Date','completion_date'],['Location / Status','location_status'],
+  ['Entry / Exit Dates','entry_exit_dates',1],['Agreements / Finance','agreements_price',1],
+  ['Owner / Contact','owner',1],['Notes','notes',1],
+];
+
+function openEditDrawer(p){
+  const ef = ([l,k,area]) => {
+    const v = String(p[k] ?? '');
+    return `<div class="efield"><label for="e-${k}">${esc(l)}</label>${
+      (area || v.includes('\n'))
+        ? `<textarea id="e-${k}" data-field="${k}">${esc(v)}</textarea>`
+        : `<input id="e-${k}" data-field="${k}" value="${esc(v)}">`}</div>`;
+  };
+  const short = EDITABLE.filter(e => !e[2] && !String(p[e[1]] ?? '').includes('\n'));
+  const long  = EDITABLE.filter(e =>  e[2] ||  String(p[e[1]] ?? '').includes('\n'));
+  $('#drawer').innerHTML = `
+    <div class="drawer-head">
+      <button class="close" aria-label="Close">×</button>
+      <div class="kicker">Editing — ${esc(p.section)}</div>
+      <h3>${esc(p.summary || [p.year,p.make,p.model].filter(Boolean).join(' '))}</h3>
+      <div class="serial">Serial ${esc(p.serial)}</div>
+      <div class="drawer-rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
+    </div>
+    <div class="drawer-body">
+      <div class="edit-grid">${short.map(ef).join('')}</div>
+      ${long.map(ef).join('')}
+      <div class="edit-hint">Saving writes these fields straight into the Piano Log sheet. The row is
+        matched by serial number at save time (never by row position), and the save is refused if the
+        sheet changed underneath you — so both the app and the sheet stay correct.</div>
+      <div class="edit-actions">
+        <button class="btn" id="save-btn">Save to Sheet</button>
+        <button class="btn ghost" id="cancel-btn">Cancel</button>
+        <span class="save-msg" id="save-msg"></span>
+      </div>
+    </div>`;
+  $('#drawer').querySelector('.close').onclick = closeDrawer;
+  $('#cancel-btn').onclick = () => openDrawer(p);
+  $('#save-btn').onclick = () => savePiano(p);
+  $('#drawer').scrollTop = 0;
+}
+
+async function savePiano(p){
+  const edits = [];
+  document.querySelectorAll('#drawer [data-field]').forEach(el => {
+    const f = el.dataset.field, oldV = String(p[f] ?? '');
+    if (el.value !== oldV) edits.push({field: f, old: oldV, new: el.value});
+  });
+  if (!edits.length) return openDrawer(p);
+  const msg = $('#save-msg');
+  msg.className = 'save-msg'; msg.textContent = 'Saving to Google Sheets…';
+  $('#save-btn').disabled = true;
+  try {
+    const r = await fetch('/api/update', {method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({serial: p.serial, edits})});
+    if (r.status === 401){ location.href = '/login.html'; return; }
+    const d = await r.json().catch(() => ({error: 'HTTP ' + r.status}));
+    if (!r.ok || d.error) throw new Error(d.error || 'HTTP ' + r.status);
+    msg.className = 'save-msg ok'; msg.textContent = 'Saved ✓ — refreshing from the sheet…';
+    await loadData(true);
+    const key = String(p.serial||'').trim();
+    openDrawer(DATA.pianos.find(x => String(x.serial||'').trim() === key) || p);
+  } catch(e){
+    msg.className = 'save-msg';
+    msg.textContent = e.message === 'Failed to fetch' ? 'Could not reach the server — is it running?' : e.message;
+    $('#save-btn').disabled = false;
+  }
 }
 const field = (k,v) => `<div class="field"><div class="k">${esc(k)}</div><div class="v">${linkify(v)}</div></div>`;
 function closeDrawer(){ $('#overlay').classList.remove('open'); $('#drawer').classList.remove('open'); }

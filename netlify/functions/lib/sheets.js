@@ -32,4 +32,25 @@ const getTabValues = (title, force) =>
 const getTabList = (force) =>
   cached('tabs', 60 * 60 * 1000, () => appsScript({ list: '1' }), force);
 
-module.exports = { getTabValues, getTabList };
+// POST an action (e.g. a write-back) to the Apps Script bridge. Apps Script
+// answers POSTs with a 302 to a one-time content URL; redirect:'follow'
+// retrieves it correctly.
+async function postAppsScript(payload) {
+  const base = process.env.APPS_SCRIPT_URL;
+  const key = process.env.SHEETS_SYNC_SECRET;
+  if (!base || !key) {
+    throw new Error('APPS_SCRIPT_URL / SHEETS_SYNC_SECRET env vars are not set in Netlify');
+  }
+  const r = await fetch(base, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ key, ...payload }),
+  });
+  if (!r.ok) throw new Error(`Apps Script HTTP ${r.status}`);
+  return r.json();
+}
+
+const clearTabCache = (title) => cache.delete(`tab:${title}`);
+
+module.exports = { getTabValues, getTabList, postAppsScript, clearTabCache };

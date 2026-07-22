@@ -85,7 +85,74 @@ def gog_json(*args, timeout=90):
                        capture_output=True, text=True, timeout=timeout)
     if r.returncode != 0:
         raise RuntimeError(r.stderr.strip() or 'gog failed')
-    return json.loads(r.stdout)
+    return json.loads(r.stdout) if r.stdout.strip() else {}
+
+# --- write-back (webapp -> sheet) ---------------------------------------
+# Editable fields -> 0-based column index in the Piano Log tab. The serial
+# (col C) is deliberately NOT here: it's the row key, so it can only be
+# changed in the sheet itself. Keep in sync with EDITABLE in index.html and
+# WRITABLE in apps-script/Code.gs.
+WRITABLE = {
+    'owner': 1, 'summary': 3, 'year': 4, 'make': 5, 'model': 6, 'size': 7,
+    'finish': 10, 'sheen': 11, 'trim': 12, 'status': 18, 'location_status': 20,
+    'entry_exit_dates': 21, 'project_category': 23, 'agreements_price': 25,
+    'notes': 26, 'completion_date': 27,
+}
+
+def col_letter(idx):
+    """0-based column index -> A1 letter (0 -> A, 26 -> AA)."""
+    s, idx = '', idx + 1
+    while idx:
+        idx, r = divmod(idx - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+def find_row_by_serial(vals, serial):
+    """Locate the sheet row whose serial cell (col C) matches exactly
+    (trimmed, whole-cell). Rows shift as pianos are added/removed, so the
+    serial — not a remembered row number — is the identity. Returns the
+    1-based row; raises ValueError if missing or ambiguous."""
+    target = str(serial or '').strip()
+    if not target:
+        raise ValueError('this entry has no serial number — add one in the sheet first, then edit here')
+    matches = [i + 1 for i, row in enumerate(vals)
+               if len(row) > 2 and str(row[2]).strip() == target]
+    if not matches:
+        raise ValueError('serial not found in the sheet — it may have been changed; refresh and try again')
+    if len(matches) > 1:
+        raise ValueError(f'this serial appears in {len(matches)} rows of the sheet '
+                         f'(rows {", ".join(map(str, matches))}) — edit it in the sheet directly')
+    return matches[0]
+
+def update_piano(serial, edits):
+    """Verify-then-write: re-read the sheet fresh, find the row by serial,
+    confirm every edited field still holds the value the client saw, then
+    write. Any mismatch aborts the whole save with no cells written."""
+    if not edits:
+        raise ValueError('no changes to save')
+    raw = gog_json('get', SHEET_ID, RANGE, timeout=60)
+    vals = raw.get('values', [])
+    rownum = find_row_by_serial(vals, serial)
+    row = vals[rownum - 1]
+    checked = []
+    for e in edits:
+        f = e.get('field', '')
+        if f not in WRITABLE:
+            raise ValueError(f'field "{f}" is not editable from the app')
+        new = str(e.get('new', ''))
+        if new.lstrip().startswith('='):
+            raise ValueError('values starting with "=" (formulas) can\'t be entered from the app')
+        idx = WRITABLE[f]
+        current = str(row[idx]).strip() if idx < len(row) else ''
+        if current != str(e.get('old', '')).strip():
+            raise ValueError(f'"{f}" was changed in the sheet after you loaded it — '
+                             'refresh and re-apply your edit')
+        checked.append((idx, new))
+    for idx, new in checked:
+        gog_json('update', SHEET_ID, f"'Piano Log'!{col_letter(idx)}{rownum}",
+                 '--input', 'RAW', '--values-json', json.dumps([[new]]), timeout=30)
+    _cache.update(data=None, at=0.0)  # next read must see the new values
+    return {'ok': True, 'row': rownum, 'updated': [e['field'] for e in edits]}
 
 def list_tabs(force=False):
     """Visible tabs of the spreadsheet, in sheet order."""
@@ -232,6 +299,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             else:
                 self.send_login(error=True)
             return
+        if urlparse(self.path).path == '/api/update':
+            if not self.is_authed():
+                return self.send_json({'error': 'authentication required'}, 401)
+            try:
+                n = int(self.headers.get('Content-Length', 0))
+                body = json.loads(self.rfile.read(n).decode() or '{}')
+                with _lock:
+                    result = update_piano(body.get('serial', ''), body.get('edits', []))
+                return self.send_json(result)
+            except ValueError as e:
+                return self.send_json({'error': str(e)}, 409)
+            except Exception as e:
+                return self.send_json({'error': str(e)}, 502)
         self.send_response(404)
         self.end_headers()
 
