@@ -28,3 +28,8 @@
   from = "/api/update"
   to = "/.netlify/functions/update"
   status = 200
+
+[[redirects]]
+  from = "/api/queue"
+  to = "/.netlify/functions/queue"
+  status = 200

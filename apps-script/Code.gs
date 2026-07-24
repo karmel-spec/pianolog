@@ -40,18 +40,39 @@ function doGet(e) {
 }
 
 /**
- * Write-back: POST JSON {key, action:'update', serial, edits:[{field,old,new}]}.
- * The row is located by exact serial-cell match (col C) at write time — never
+ * Write-back: POST JSON with the shared key.
+ *   {key, action:'update', role, serial, edits:[{field,old,new}]}   cell edits
+ *   {key, action:'move', serial, anchor_serial, where}              queue reorder
+ * Rows are located by exact serial-cell match (col C) at write time — never
  * by a remembered row number, since rows shift as pianos are added/removed.
- * Every edited field's old value is re-verified before anything is written;
- * any mismatch aborts the whole save. Keep WRITABLE in sync with server.py.
+ * Cell edits re-verify each field's old value before anything is written; any
+ * mismatch aborts the whole save. Moves are serial-anchored: "put S before/
+ * after T". Keep the WRITABLE maps in sync with server.py.
  */
+var TECH_WRITABLE = {
+  location_status: 20,   // map location #
+  year: 4,
+  current_phase: 118     // col DO
+};
 var WRITABLE = {
-  owner: 1, summary: 3, year: 4, make: 5, model: 6, size: 7,
-  finish: 10, sheen: 11, trim: 12, status: 18, location_status: 20,
+  location_status: 20, year: 4, current_phase: 118,
+  owner: 1, summary: 3, make: 5, model: 6, size: 7,
+  finish: 10, sheen: 11, trim: 12, status: 18,
   entry_exit_dates: 21, project_category: 23, agreements_price: 25,
   notes: 26, completion_date: 27
 };
+
+function findRowBySerial_(vals, serial) {
+  var target = String(serial || '').trim();
+  if (!target) return { error: 'this entry has no serial number — add one in the sheet first, then edit here' };
+  var matches = [];
+  for (var i = 0; i < vals.length; i++) {
+    if (String(vals[i][2] || '').trim() === target) matches.push(i + 1);
+  }
+  if (matches.length === 0) return { error: 'serial not found in the sheet — it may have been changed; refresh and try again' };
+  if (matches.length > 1) return { error: 'this serial appears in ' + matches.length + ' rows of the sheet (rows ' + matches.join(', ') + ') — edit it in the sheet directly' };
+  return { row: matches[0] };
+}
 
 function doPost(e) {
   var body;
@@ -60,9 +81,9 @@ function doPost(e) {
   if (!SYNC_SECRET || SYNC_SECRET === 'PASTE_SECRET_HERE' || body.key !== SYNC_SECRET) {
     return json_({ error: 'unauthorized' });
   }
-  if (body.action !== 'update') return json_({ error: 'unknown action' });
-  var edits = body.edits || [];
-  if (!edits.length) return json_({ error: 'no changes to save' });
+  if (body.action !== 'update' && body.action !== 'move') {
+    return json_({ error: 'unknown action' });
+  }
 
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -71,28 +92,40 @@ function doPost(e) {
     if (!sh) return json_({ error: 'Piano Log tab not found' });
     var vals = sh.getDataRange().getDisplayValues();
 
-    var target = String(body.serial || '').trim();
-    if (!target) return json_({ error: 'this entry has no serial number — add one in the sheet first, then edit here' });
-    var matches = [];
-    for (var i = 0; i < vals.length; i++) {
-      if (String(vals[i][2] || '').trim() === target) matches.push(i + 1);
-    }
-    if (matches.length === 0) return json_({ error: 'serial not found in the sheet — it may have been changed; refresh and try again' });
-    if (matches.length > 1) return json_({ error: 'this serial appears in ' + matches.length + ' rows of the sheet (rows ' + matches.join(', ') + ') — edit it in the sheet directly' });
-    var rownum = matches[0], row = vals[rownum - 1];
+    var found = findRowBySerial_(vals, body.serial);
+    if (found.error) return json_(found);
+    var rownum = found.row, row = vals[rownum - 1];
 
+    if (body.action === 'move') {
+      if (String(body.anchor_serial || '').trim() === String(body.serial || '').trim()) {
+        return json_({ ok: true, row: rownum, moved: false });
+      }
+      var anchor = findRowBySerial_(vals, body.anchor_serial);
+      if (anchor.error) return json_({ error: 'anchor piano: ' + anchor.error });
+      var dest = anchor.row + (body.where === 'after' ? 1 : 0);
+      sh.moveRows(sh.getRange(rownum, 1), dest);
+      SpreadsheetApp.flush();
+      return json_({ ok: true, moved: true, from_row: rownum, anchor_row: anchor.row });
+    }
+
+    var writable = body.role === 'tech' ? TECH_WRITABLE : WRITABLE;
+    var edits = body.edits || [];
+    if (!edits.length) return json_({ error: 'no changes to save' });
     for (var j = 0; j < edits.length; j++) {
       var f = edits[j].field;
-      if (!WRITABLE.hasOwnProperty(f)) return json_({ error: 'field "' + f + '" is not editable from the app' });
+      if (!writable.hasOwnProperty(f)) {
+        return json_({ error: 'field "' + f + '" is not editable from the app' +
+          (body.role === 'tech' && WRITABLE.hasOwnProperty(f) ? ' for technicians' : '') });
+      }
       var newVal = String(edits[j]['new'] || '');
       if (/^\s*=/.test(newVal)) return json_({ error: 'values starting with "=" (formulas) can\'t be entered from the app' });
-      var current = String(row[WRITABLE[f]] || '').trim();
+      var current = String(row[writable[f]] || '').trim();
       if (current !== String(edits[j].old || '').trim()) {
         return json_({ error: '"' + f + '" was changed in the sheet after you loaded it — refresh and re-apply your edit' });
       }
     }
     for (var k = 0; k < edits.length; k++) {
-      sh.getRange(rownum, WRITABLE[edits[k].field] + 1).setValue(String(edits[k]['new'] || ''));
+      sh.getRange(rownum, writable[edits[k].field] + 1).setValue(String(edits[k]['new'] || ''));
     }
     SpreadsheetApp.flush();
     var updated = edits.map(function (x) { return x.field; });

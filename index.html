@@ -605,7 +605,7 @@ const firstLine = s => String(s||'').split('\n')[0];
 const shortSection = s => s.length > 26 ? s.slice(0,24)+'…' : s;
 
 const FIELDS = [
-  ['Section','section'],['Sub-location','subsection'],['Location / Status','location_status'],['Status','status'],
+  ['Section','section'],['Sub-location','subsection'],['Location / Status','location_status'],['Status','status'],['Current Phase','current_phase'],
   ['Project Category','project_category'],['Entry / Exit Dates','entry_exit_dates'],
   ['Completion Date','completion_date'],['Receiving / Exiting','receiving_exiting'],
   ['Category Tags','category'],['Finish','finish'],['Sheen','sheen'],['Trim','trim'],
@@ -623,7 +623,7 @@ function openDrawer(p){
   const links = [['Before Photos',p.before_photos],['After Photos',p.after_photos],
                  ['Before Video',p.before_video],['After Video',p.after_video]]
     .filter(([,u]) => /^https?:/.test((u||'').trim()));
-  const canEdit = DATA && DATA.live && DATA.role === 'admin' && String(p.serial||'').trim();
+  const canEdit = DATA && DATA.live && (DATA.role === 'admin' || DATA.role === 'tech') && String(p.serial||'').trim();
   $('#drawer').innerHTML = `
     <div class="drawer-head">
       <button class="close" aria-label="Close">×</button>
@@ -637,6 +637,7 @@ function openDrawer(p){
       ${links.length?`<div class="linkchips">${links.map(([l,u])=>`<a href="${esc(u.trim().split(/\s/)[0])}" target="_blank" rel="noopener">${l}</a>`).join('')}</div>`:''}
       ${p.owner?field('Owner / Contact', p.owner):(p.owner_name?field('Owner', p.owner_name):'')}
       ${p.qb_owner?field('Owner (QuickBooks match)', [p.qb_owner, p.qb_email, p.qb_address, p.qb_city_state, p.qb_sale_date?'Sale date: '+p.qb_sale_date:'', p.qb_matched_serial?'Matched serial: '+p.qb_matched_serial:''].filter(Boolean).join('\n')):''}
+      ${p.queue_pos?field('Shop Queue', '#'+p.queue_pos+' of '+p.queue_total+' — '+p.section):''}
       <div class="fields-2">${FIELDS.map(([l,k])=>p[k]?field(l,String(p[k])):'').join('')}</div>
       ${p.notes?field('Notes', p.notes):''}
       ${p.milestones?field('Milestones & Project Updates', p.milestones):''}
@@ -649,13 +650,16 @@ function openDrawer(p){
   $('#drawer').scrollTop = 0;
 }
 
-// Fields the app may write back to the sheet. Keep in sync with WRITABLE in
-// server.py and apps-script/Code.gs (those are the enforced whitelists).
-const EDITABLE = [
+// Fields the app may write back to the sheet, per role. Keep in sync with the
+// WRITABLE maps in server.py and apps-script/Code.gs (the enforced whitelists).
+const EDITABLE_TECH = [
+  ['Map Location #','location_status'],['Year','year'],['Current Phase','current_phase'],
+];
+const EDITABLE_ADMIN = [
   ['Summary','summary'],['Year','year'],['Make','make'],['Model','model'],
   ['Size','size'],['Finish','finish'],['Sheen','sheen'],['Trim','trim'],
-  ['Status','status'],['Project Category','project_category'],
-  ['Completion Date','completion_date'],['Location / Status','location_status'],
+  ['Status','status'],['Current Phase','current_phase'],['Project Category','project_category'],
+  ['Completion Date','completion_date'],['Map Location # / Status','location_status'],
   ['Entry / Exit Dates','entry_exit_dates',1],['Agreements / Finance','agreements_price',1],
   ['Owner / Contact','owner',1],['Notes','notes',1],
 ];
@@ -668,8 +672,13 @@ function openEditDrawer(p){
         ? `<textarea id="e-${k}" data-field="${k}">${esc(v)}</textarea>`
         : `<input id="e-${k}" data-field="${k}" value="${esc(v)}">`}</div>`;
   };
-  const short = EDITABLE.filter(e => !e[2] && !String(p[e[1]] ?? '').includes('\n'));
-  const long  = EDITABLE.filter(e =>  e[2] ||  String(p[e[1]] ?? '').includes('\n'));
+  const list = DATA.role === 'tech' ? EDITABLE_TECH : EDITABLE_ADMIN;
+  const short = list.filter(e => !e[2] && !String(p[e[1]] ?? '').includes('\n'));
+  const long  = list.filter(e =>  e[2] ||  String(p[e[1]] ?? '').includes('\n'));
+  const queueField = p.queue_pos ? `
+      <div class="efield"><label for="e-queue">Shop Queue # (1–${p.queue_total} in ${esc(p.section)})</label>
+        <input id="e-queue" type="number" min="1" max="${p.queue_total}" step="1" value="${p.queue_pos}" data-queue="1">
+      </div>` : '';
   $('#drawer').innerHTML = `
     <div class="drawer-head">
       <button class="close" aria-label="Close">×</button>
@@ -679,11 +688,13 @@ function openEditDrawer(p){
       <div class="drawer-rule"><div class="bar"></div><div class="dot"></div><div class="bar"></div></div>
     </div>
     <div class="drawer-body">
+      ${queueField ? `<div class="edit-grid">${queueField}</div>` : ''}
       <div class="edit-grid">${short.map(ef).join('')}</div>
       ${long.map(ef).join('')}
       <div class="edit-hint">Saving writes these fields straight into the Piano Log sheet. The row is
         matched by serial number at save time (never by row position), and the save is refused if the
-        sheet changed underneath you — so both the app and the sheet stay correct.</div>
+        sheet changed underneath you — so both the app and the sheet stay correct.${
+        queueField ? ' Changing the queue number physically moves this piano’s row within its section, and every other queue number adjusts automatically.' : ''}</div>
       <div class="edit-actions">
         <button class="btn" id="save-btn">Save to Sheet</button>
         <button class="btn ghost" id="cancel-btn">Cancel</button>
@@ -702,22 +713,33 @@ async function savePiano(p){
     const f = el.dataset.field, oldV = String(p[f] ?? '');
     if (el.value !== oldV) edits.push({field: f, old: oldV, new: el.value});
   });
-  if (!edits.length) return openDrawer(p);
+  const qEl = document.querySelector('#drawer [data-queue]');
+  const newQ = qEl ? parseInt(qEl.value, 10) : NaN;
+  const qChanged = qEl && Number.isInteger(newQ) && newQ !== p.queue_pos;
+  if (!edits.length && !qChanged) return openDrawer(p);
   const msg = $('#save-msg');
   msg.className = 'save-msg'; msg.textContent = 'Saving to Google Sheets…';
   $('#save-btn').disabled = true;
-  try {
-    const r = await fetch('/api/update', {method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({serial: p.serial, edits})});
-    if (r.status === 401){ location.href = '/login.html'; return; }
+  const post = async (url, body) => {
+    const r = await fetch(url, {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    if (r.status === 401){ location.href = '/login.html'; throw new Error('auth'); }
     const d = await r.json().catch(() => ({error: 'HTTP ' + r.status}));
     if (!r.ok || d.error) throw new Error(d.error || 'HTTP ' + r.status);
+    return d;
+  };
+  try {
+    if (edits.length) await post('/api/update', {serial: p.serial, edits});
+    if (qChanged){
+      msg.textContent = 'Moving in the shop queue…';
+      await post('/api/queue', {serial: p.serial, new_pos: newQ});
+    }
     msg.className = 'save-msg ok'; msg.textContent = 'Saved ✓ — refreshing from the sheet…';
     await loadData(true);
     const key = String(p.serial||'').trim();
     openDrawer(DATA.pianos.find(x => String(x.serial||'').trim() === key) || p);
   } catch(e){
+    if (e.message === 'auth') return;
     msg.className = 'save-msg';
     msg.textContent = e.message === 'Failed to fetch' ? 'Could not reach the server — is it running?' : e.message;
     $('#save-btn').disabled = false;

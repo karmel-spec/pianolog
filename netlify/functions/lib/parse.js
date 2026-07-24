@@ -11,6 +11,7 @@ const COLS = {
   agreements_price: 25, notes: 26, completion_date: 27,
   isolved_job: 28, qbo: 29, tags: 30,
   down_payment_date: 32, milestones: 35,
+  current_phase: 118,  // col DO ("CURRENT PHASE", e.g. "In Queue")
 };
 
 const GROUPS = [
@@ -78,22 +79,27 @@ function ownerName(owner) {
   return '';
 }
 
+const CLASSIFY_COLS = 53;  // A..BA — row classification ignores the far auxiliary
+                           // columns (Shopify sync, inventory checkboxes, phase),
+                           // which carry residual content even on section/label rows.
+
 function parse(vals) {
   const pianos = [], sections = [];
   let section = null, subsection = null, seq = 0;
   for (let i = 0; i < vals.length; i++) {
     if (i < 6) continue;  // blank row, header, legend rows
     const row = vals[i].map(String);
-    const header = sectionHeader(row);
+    const crow = row.slice(0, CLASSIFY_COLS);
+    const header = sectionHeader(crow);
     if (header) {
       section = header; subsection = null;
       sections.push({ name: section, group: groupFor(section), row: i + 1 });
       continue;
     }
-    if (!meaningful(row).length) continue;
-    const label = subsectionLabel(row);
+    if (!meaningful(crow).length) continue;
+    const label = subsectionLabel(crow);
     if (label) { subsection = label; continue; }
-    const dc = dataCells(row);
+    const dc = dataCells(crow);
     if (!cell(row, 1) && (!dc.length || (dc.length === 1 && dc[0] === cell(row, 18)))) continue;
     seq += 1;
     const p = {};
@@ -109,6 +115,16 @@ function parse(vals) {
       p.unidentified = true;
     }
     pianos.push(p);
+  }
+  // Queue position: for shopwork sections the row order IS the work queue
+  // (top row = #1, next up for delivery). Position among the section's
+  // pianos, in sheet-row order.
+  const bySection = {};
+  for (const p of pianos) {
+    if (p.group === 'Shopwork') (bySection[p.section] = bySection[p.section] || []).push(p);
+  }
+  for (const members of Object.values(bySection)) {
+    members.forEach((p, i) => { p.queue_pos = i + 1; p.queue_total = members.length; });
   }
   return {
     generated_at: new Date().toLocaleString('en-US', {

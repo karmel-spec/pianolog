@@ -19,6 +19,7 @@ COLS = {
     'agreements_price': 25, 'notes': 26, 'completion_date': 27,
     'isolved_job': 28, 'qbo': 29, 'tags': 30,
     'down_payment_date': 32, 'milestones': 35,
+    'current_phase': 118,  # col DO ("CURRENT PHASE", e.g. "In Queue")
 }
 
 GROUPS = [
@@ -97,24 +98,29 @@ def owner_name(owner):
         return line
     return ''
 
+CLASSIFY_COLS = 53  # A..BA — row classification ignores the far auxiliary
+                    # columns (Shopify sync, inventory checkboxes, phase), which
+                    # carry residual content even on section/label rows.
+
 def parse(vals):
     pianos, sections = [], []
     section, subsection, seq = None, None, 0
     for i, row in enumerate(vals):
         if i < 6:
             continue  # blank row, header, legend rows
-        header = section_header(row)
+        crow = row[:CLASSIFY_COLS]
+        header = section_header(crow)
         if header:
             section, subsection = header, None
             sections.append({'name': section, 'group': group_for(section), 'row': i + 1})
             continue
-        if not meaningful(row):
+        if not meaningful(crow):
             continue
-        label = subsection_label(row)
+        label = subsection_label(crow)
         if label:
             subsection = label
             continue
-        dc = data_cells(row)
+        dc = data_cells(crow)
         if not cell(row, 1) and (not dc or dc == [cell(row, 18)]):
             continue  # checkbox/status-only artifact rows with no substance
         seq += 1
@@ -129,6 +135,17 @@ def parse(vals):
             p['summary'] = p['owner_name'] or p['owner'].split('\n')[0][:60] or '(unidentified entry)'
             p['unidentified'] = True
         pianos.append(p)
+    # Queue position: for shopwork sections the row order IS the work queue
+    # (top row = #1, next up for delivery). Position among the section's
+    # pianos, in sheet-row order.
+    by_section = {}
+    for p in pianos:
+        if p['group'] == 'Shopwork':
+            by_section.setdefault(p['section'], []).append(p)
+    for members in by_section.values():
+        for pos, p in enumerate(members, 1):
+            p['queue_pos'] = pos
+            p['queue_total'] = len(members)
     return {
         'generated_at': datetime.now().strftime('%b %d, %Y at %I:%M %p'),
         'source': 'Piano Log & Inventory — first tab (Piano Log)',

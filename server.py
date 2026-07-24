@@ -28,7 +28,7 @@ from parse import parse  # noqa: E402
 DIR = os.path.dirname(os.path.abspath(__file__))
 PORT = 8412
 SHEET_ID = '1ZunbPKygpQlcXfTyPowDHdUE9spJ3uV1XA4iX1eoKRc'
-RANGE = "'Piano Log'!A1:BA5000"
+RANGE = "'Piano Log'!A1:DO5000"   # through col DO (CURRENT PHASE)
 ACCOUNT = 'karmel@brighamlarsonpianos.com'
 CACHE_TTL = 300  # seconds
 TABS_TTL = 3600  # tab list changes rarely
@@ -173,16 +173,21 @@ def gog_json(*args, timeout=90):
     return json.loads(r.stdout) if r.stdout.strip() else {}
 
 # --- write-back (webapp -> sheet) ---------------------------------------
-# Editable fields -> 0-based column index in the Piano Log tab. The serial
-# (col C) is deliberately NOT here: it's the row key, so it can only be
-# changed in the sheet itself. Keep in sync with EDITABLE in index.html and
-# WRITABLE in apps-script/Code.gs.
-WRITABLE = {
-    'owner': 1, 'summary': 3, 'year': 4, 'make': 5, 'model': 6, 'size': 7,
-    'finish': 10, 'sheen': 11, 'trim': 12, 'status': 18, 'location_status': 20,
+# Editable fields -> 0-based column index in the Piano Log tab, per role.
+# The serial (col C) is deliberately NOT here: it's the row key, so it can
+# only be changed in the sheet itself. Keep in sync with EDITABLE_* in
+# index.html and the WRITABLE maps in apps-script/Code.gs.
+TECH_WRITABLE = {
+    'location_status': 20,   # map location #
+    'year': 4,
+    'current_phase': 118,    # col DO
+}
+WRITABLE = dict(TECH_WRITABLE, **{
+    'owner': 1, 'summary': 3, 'make': 5, 'model': 6, 'size': 7,
+    'finish': 10, 'sheen': 11, 'trim': 12, 'status': 18,
     'entry_exit_dates': 21, 'project_category': 23, 'agreements_price': 25,
     'notes': 26, 'completion_date': 27,
-}
+})
 
 def col_letter(idx):
     """0-based column index -> A1 letter (0 -> A, 26 -> AA)."""
@@ -209,10 +214,11 @@ def find_row_by_serial(vals, serial):
                          f'(rows {", ".join(map(str, matches))}) — edit it in the sheet directly')
     return matches[0]
 
-def update_piano(serial, edits):
+def update_piano(serial, edits, role='admin'):
     """Verify-then-write: re-read the sheet fresh, find the row by serial,
     confirm every edited field still holds the value the client saw, then
     write. Any mismatch aborts the whole save with no cells written."""
+    writable = TECH_WRITABLE if role == 'tech' else WRITABLE
     if not edits:
         raise ValueError('no changes to save')
     raw = gog_json('get', SHEET_ID, RANGE, timeout=60)
@@ -222,12 +228,13 @@ def update_piano(serial, edits):
     checked = []
     for e in edits:
         f = e.get('field', '')
-        if f not in WRITABLE:
-            raise ValueError(f'field "{f}" is not editable from the app')
+        if f not in writable:
+            raise ValueError(f'field "{f}" is not editable from the app'
+                             + (' for technicians' if role == 'tech' and f in WRITABLE else ''))
         new = str(e.get('new', ''))
         if new.lstrip().startswith('='):
             raise ValueError('values starting with "=" (formulas) can\'t be entered from the app')
-        idx = WRITABLE[f]
+        idx = writable[f]
         current = str(row[idx]).strip() if idx < len(row) else ''
         if current != str(e.get('old', '')).strip():
             raise ValueError(f'"{f}" was changed in the sheet after you loaded it — '
@@ -238,6 +245,77 @@ def update_piano(serial, edits):
                  '--input', 'RAW', '--values-json', json.dumps([[new]]), timeout=30)
     _cache.update(data=None, at=0.0)  # next read must see the new values
     return {'ok': True, 'row': rownum, 'updated': [e['field'] for e in edits]}
+
+# --- queue reorder (shopwork sections) -----------------------------------
+# The row order of a shopwork section IS the work queue (top row = #1).
+# Reordering physically moves the piano's whole row, done by the Apps Script
+# bridge (gog has no move-rows). The move is serial-anchored — "put S before/
+# after T" — never raw row numbers, so concurrent row shifts can't misplace it.
+_bridge = {}
+
+def load_bridge():
+    if not _bridge:
+        url = os.environ.get('APPS_SCRIPT_URL', '').strip()
+        key = os.environ.get('SHEETS_SYNC_SECRET', '').strip()
+        path = os.path.join(DIR, 'data', 'deploy-secrets.txt')
+        if (not url or not key) and os.path.exists(path):
+            for line in open(path):
+                line = line.strip()
+                if line.startswith('SHEETS_SYNC_SECRET=') and not key:
+                    key = line.split('=', 1)[1].strip()
+                elif line.startswith('https://script.google.com/') and not url:
+                    url = line
+        _bridge.update(url=url, key=key)
+    return _bridge
+
+def bridge_post(payload):
+    b = load_bridge()
+    if not b['url'] or not b['key']:
+        raise RuntimeError('Apps Script bridge not configured — need the web app URL and '
+                           'SHEETS_SYNC_SECRET in data/deploy-secrets.txt (or env vars)')
+    req = urllib.request.Request(b['url'], json.dumps(dict(payload, key=b['key'])).encode(),
+                                 {'Content-Type': 'text/plain'})
+    with urllib.request.urlopen(req, timeout=60) as r:  # urllib re-issues the 302 as GET, as Apps Script expects
+        res = json.loads(r.read().decode())
+    if res.get('error'):
+        raise ValueError(res['error'])
+    return res
+
+def queue_move(serial, new_pos):
+    raw = gog_json('get', SHEET_ID, RANGE, timeout=60)
+    data = parse(raw.get('values', []))
+    target = str(serial or '').strip()
+    if not target:
+        raise ValueError('this entry has no serial number — add one in the sheet first')
+    matches = [p for p in data['pianos'] if p['serial'].strip() == target]
+    if not matches:
+        raise ValueError('serial not found in the sheet — refresh and try again')
+    if len(matches) > 1:
+        raise ValueError('this serial appears more than once in the sheet — reorder it in the sheet directly')
+    p = matches[0]
+    if p.get('group') != 'Shopwork':
+        raise ValueError('queue ordering applies only to shopwork sections')
+    members = [x for x in data['pianos'] if x['section'] == p['section']]
+    total = len(members)
+    try:
+        new_pos = int(new_pos)
+    except (TypeError, ValueError):
+        raise ValueError('queue number must be a whole number')
+    if not 1 <= new_pos <= total:
+        raise ValueError(f'queue number must be between 1 and {total} for {p["section"]}')
+    cur = p['queue_pos']
+    if new_pos == cur:
+        return {'ok': True, 'moved': False, 'queue_pos': cur, 'queue_total': total}
+    anchor = members[new_pos - 1]
+    if not anchor['serial'].strip():
+        raise ValueError(f'the piano currently at queue #{new_pos} has no serial number, '
+                         'so the move can\'t be anchored safely — reorder in the sheet')
+    bridge_post({'action': 'move', 'serial': target,
+                 'anchor_serial': anchor['serial'].strip(),
+                 'where': 'after' if new_pos > cur else 'before'})
+    _cache.update(data=None, at=0.0)
+    return {'ok': True, 'moved': True, 'queue_pos': new_pos, 'queue_total': total,
+            'section': p['section']}
 
 def list_tabs(force=False):
     """Visible tabs of the spreadsheet, in sheet order."""
@@ -409,20 +487,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self.redirect('/', cookie=self.start_session('admin', 'password-login'))
             return self.redirect('/login.html?error=1')
 
-        # Write-back: sheet edits are admin-only (technicians don't even
-        # receive the pricing/owner fields, so they could never verify-then-
-        # write them correctly).
-        if urlparse(self.path).path == '/api/update':
+        # Write-back. Techs may edit their whitelist (map location, year,
+        # current phase) and reorder shopwork queues; admins edit everything.
+        path = urlparse(self.path).path
+        if path in ('/api/update', '/api/queue'):
             role = effective_role(self.get_session())
             if not role:
                 return self.send_json({'error': 'authentication required'}, 401)
-            if role != 'admin':
-                return self.send_json({'error': 'Editing from the app is admin-only.'}, 403)
             try:
                 n = int(self.headers.get('Content-Length', 0))
                 body = json.loads(self.rfile.read(n).decode() or '{}')
                 with _lock:
-                    result = update_piano(body.get('serial', ''), body.get('edits', []))
+                    if path == '/api/queue':
+                        result = queue_move(body.get('serial', ''), body.get('new_pos'))
+                    else:
+                        result = update_piano(body.get('serial', ''),
+                                              body.get('edits', []), role=role)
                 return self.send_json(result)
             except ValueError as e:
                 return self.send_json({'error': str(e)}, 409)
