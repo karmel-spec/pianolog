@@ -111,8 +111,24 @@ function doPost(e) {
     var writable = body.role === 'tech' ? TECH_WRITABLE : WRITABLE;
     var edits = body.edits || [];
     if (!edits.length) return json_({ error: 'no changes to save' });
+    var checked = [];   // [0-based col, value] pairs, written only if ALL verify
     for (var j = 0; j < edits.length; j++) {
       var f = edits[j].field;
+      // The serial is the row key, so it gets special rules: admin-only,
+      // never blank, and never a duplicate of another row's serial.
+      if (f === 'serial') {
+        if (body.role === 'tech') return json_({ error: 'the serial number is admin-only — it identifies the row' });
+        var newSer = String(edits[j]['new'] || '').trim();
+        if (!newSer) return json_({ error: "the serial can't be blank — it's how the app finds this piano" });
+        if (/^=/.test(newSer)) return json_({ error: 'values starting with "=" (formulas) can\'t be entered from the app' });
+        for (var d = 0; d < vals.length; d++) {
+          if (d + 1 !== rownum && String(vals[d][2] || '').trim() === newSer) {
+            return json_({ error: 'serial "' + newSer + '" already belongs to row ' + (d + 1) + " — two pianos can't share a serial" });
+          }
+        }
+        checked.push([2, newSer]);
+        continue;
+      }
       if (!writable.hasOwnProperty(f)) {
         return json_({ error: 'field "' + f + '" is not editable from the app' +
           (body.role === 'tech' && WRITABLE.hasOwnProperty(f) ? ' for technicians' : '') });
@@ -123,9 +139,10 @@ function doPost(e) {
       if (current !== String(edits[j].old || '').trim()) {
         return json_({ error: '"' + f + '" was changed in the sheet after you loaded it — refresh and re-apply your edit' });
       }
+      checked.push([writable[f], newVal]);
     }
-    for (var k = 0; k < edits.length; k++) {
-      sh.getRange(rownum, writable[edits[k].field] + 1).setValue(String(edits[k]['new'] || ''));
+    for (var k = 0; k < checked.length; k++) {
+      sh.getRange(rownum, checked[k][0] + 1).setValue(checked[k][1]);
     }
     SpreadsheetApp.flush();
     var updated = edits.map(function (x) { return x.field; });

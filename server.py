@@ -228,6 +228,23 @@ def update_piano(serial, edits, role='admin'):
     checked = []
     for e in edits:
         f = e.get('field', '')
+        # The serial is the row key, so it gets special rules: admin-only,
+        # never blank, and never a duplicate of another row's serial.
+        if f == 'serial':
+            if role != 'admin':
+                raise ValueError('the serial number is admin-only — it identifies the row')
+            new = str(e.get('new', '')).strip()
+            if not new:
+                raise ValueError("the serial can't be blank — it's how the app finds this piano")
+            if new.startswith('='):
+                raise ValueError('values starting with "=" (formulas) can\'t be entered from the app')
+            dupes = [i + 1 for i, r2 in enumerate(vals)
+                     if i + 1 != rownum and len(r2) > 2 and str(r2[2]).strip() == new]
+            if dupes:
+                raise ValueError(f'serial "{new}" already belongs to row {dupes[0]} — '
+                                 'two pianos can\'t share a serial')
+            checked.append((2, new))
+            continue
         if f not in writable:
             raise ValueError(f'field "{f}" is not editable from the app'
                              + (' for technicians' if role == 'tech' and f in WRITABLE else ''))

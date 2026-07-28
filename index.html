@@ -656,6 +656,7 @@ const EDITABLE_TECH = [
   ['Map Location #','location_status'],['Year','year'],['Current Phase','current_phase'],
 ];
 const EDITABLE_ADMIN = [
+  ['Serial #','serial'],
   ['Summary','summary'],['Year','year'],['Make','make'],['Model','model'],
   ['Size','size'],['Finish','finish'],['Sheen','sheen'],['Trim','trim'],
   ['Status','status'],['Current Phase','current_phase'],['Project Category','project_category'],
@@ -736,7 +737,9 @@ async function savePiano(p){
     }
     msg.className = 'save-msg ok'; msg.textContent = 'Saved ✓ — refreshing from the sheet…';
     await loadData(true);
-    const key = String(p.serial||'').trim();
+    // if the serial itself was edited, the piano is now keyed by the new one
+    const serialEdit = edits.find(e => e.field === 'serial');
+    const key = String((serialEdit ? serialEdit.new : p.serial) || '').trim();
     openDrawer(DATA.pianos.find(x => String(x.serial||'').trim() === key) || p);
   } catch(e){
     if (e.message === 'auth') return;
