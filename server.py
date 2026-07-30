@@ -28,7 +28,7 @@ from parse import parse  # noqa: E402
 DIR = os.path.dirname(os.path.abspath(__file__))
 PORT = 8412
 SHEET_ID = '1ZunbPKygpQlcXfTyPowDHdUE9spJ3uV1XA4iX1eoKRc'
-RANGE = "'Piano Log'!A1:DO5000"   # through col DO (CURRENT PHASE)
+RANGE = "'Piano Log'!A1:DZ5000"   # through col DZ (past TRACK at DT, with headroom)
 ACCOUNT = 'karmel@brighamlarsonpianos.com'
 CACHE_TTL = 300  # seconds
 TABS_TTL = 3600  # tab list changes rarely

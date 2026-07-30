@@ -12,6 +12,7 @@ const COLS = {
   isolved_job: 28, qbo: 29, tags: 30,
   down_payment_date: 32, milestones: 35,
   current_phase: 118,  // col DO ("CURRENT PHASE", e.g. "In Queue")
+  track: 123,  // col DT ("TRACK", e.g. "Rebuild, Refinish")
 };
 
 const GROUPS = [

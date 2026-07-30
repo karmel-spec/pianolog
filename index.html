@@ -87,9 +87,11 @@
 
   /* controls */
   .controls{position:sticky;top:var(--header-h,88px);z-index:30;background:var(--paper);padding:.9rem 0;border-bottom:1px solid var(--line);display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
-  .controls input[type=search]{flex:1 1 260px;padding:.6rem .9rem;border:1px solid var(--ink-2);border-radius:var(--radius);font-size:.95rem;font-family:inherit}
+  .controls input[type=search]{width:100%;padding:.6rem .9rem;border:1px solid var(--ink-2);border-radius:var(--radius);font-size:.95rem;font-family:inherit}
   .controls input[type=search]:focus{outline:2px solid var(--red);outline-offset:1px;border-color:transparent}
   .controls select{padding:.6rem .7rem;border:1px solid var(--line);border-radius:var(--radius);font-size:.85rem;font-family:inherit;background:var(--paper);color:var(--ink);max-width:230px}
+  .field-wrap{display:flex;flex-direction:column;gap:.2rem}
+  #q-wrap{flex:1 1 260px}
 
   /* multi-select section filter */
   .ms{position:relative;display:flex;flex-direction:column;gap:.2rem}
@@ -112,6 +114,9 @@
   .ms-actions{display:flex;gap:.9rem;padding:.2rem .9rem .5rem;border-bottom:1px solid var(--line);margin-bottom:.3rem}
   .ms-actions button{border:none;background:none;color:var(--red);font-size:.76rem;cursor:pointer;
                       text-decoration:underline;text-underline-offset:2px;padding:0}
+  .ms-count{margin-left:auto;color:var(--ink-3);font-size:.76rem;font-variant-numeric:tabular-nums}
+  .ms-row-main{display:flex;align-items:center;gap:.55rem}
+  .ms-sep{border:none;border-top:1px solid var(--line);margin:.35rem .9rem}
   .count-line{font-size:.8rem;color:var(--ink-3);margin-left:auto}
   .clear-btn{border:none;background:none;color:var(--red);font-size:.8rem;letter-spacing:.06em;cursor:pointer;text-decoration:underline;text-underline-offset:3px;display:none}
   .clear-btn.show{display:inline}
@@ -162,6 +167,27 @@
   .foot-inner{max-width:1280px;margin:0 auto;padding:2rem 1.5rem;font-size:.8rem;display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap}
   footer .brand{color:#fff;letter-spacing:.2em;text-transform:uppercase;font-weight:600}
 
+  /* filtered report modal */
+  .report-modal{position:fixed;top:3vh;left:50%;transform:translateX(-50%) translateY(20px);width:min(920px,94vw);
+                height:94vh;background:var(--paper);z-index:75;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.3);
+                display:none;flex-direction:column;opacity:0;transition:opacity .18s ease,transform .18s ease}
+  .report-modal.open{display:flex;opacity:1;transform:translateX(-50%) translateY(0)}
+  .report-head{background:var(--ink);color:#fff;padding:1.2rem 1.5rem;border-radius:10px 10px 0 0;position:relative;flex:none}
+  .report-head .kicker{font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:var(--cream-2)}
+  .report-head h3{font-size:1.15rem;font-weight:600;margin-top:.25rem}
+  .report-head .close{position:absolute;top:.9rem;right:1rem;background:none;border:none;color:#fff;font-size:1.5rem;cursor:pointer;line-height:1}
+  .report-toolbar{display:flex;align-items:center;gap:.9rem;padding:.8rem 1.5rem;border-bottom:1px solid var(--line);flex-wrap:wrap;flex:none}
+  .report-toolbar button:not(.btn){border:none;background:none;color:var(--red);font-size:.8rem;cursor:pointer;text-decoration:underline;text-underline-offset:2px;padding:0}
+  .report-count{font-size:.82rem;color:var(--ink-3)}
+  .report-actions{margin-left:auto;display:flex;gap:.6rem}
+  .report-body{flex:1;overflow:auto;padding:0 1.5rem 1.5rem}
+  .report-body table{width:100%;border-collapse:collapse;font-size:.83rem}
+  .report-body thead th{position:sticky;top:0;background:var(--paper);text-align:left;font-size:.66rem;letter-spacing:.1em;
+                         text-transform:uppercase;color:var(--ink-2);padding:.6rem .5rem;border-bottom:2px solid var(--ink)}
+  .report-body td{padding:.5rem;border-bottom:1px solid var(--line);vertical-align:top}
+  .report-body tr.excluded{opacity:.4}
+  .report-body input[type=checkbox]{accent-color:var(--red);width:16px;height:16px}
+
   /* drawer edit mode */
   .drawer .edit-btn{position:absolute;top:.95rem;right:3.1rem;background:none;border:1px solid #777;color:#fff;font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;padding:.32rem .85rem;border-radius:999px;cursor:pointer}
   .drawer .edit-btn:hover{border-color:#fff;background:rgba(255,255,255,.08)}
@@ -208,8 +234,14 @@
 <main>
 <div id="view-pianolog">
   <div class="controls">
-    <input type="search" id="q" placeholder="Search make, model, serial, owner, notes…" autocomplete="off">
-    <select id="f-group"><option value="">All Groups</option></select>
+    <div class="field-wrap" id="q-wrap">
+      <span class="ms-label">General Search</span>
+      <input type="search" id="q" placeholder="Search make, model, serial, owner, notes…" autocomplete="off">
+    </div>
+    <div class="field-wrap">
+      <span class="ms-label">Groups</span>
+      <select id="f-group"><option value="">All Groups</option></select>
+    </div>
     <div class="ms" id="section-ms">
       <span class="ms-label">Section</span>
       <button type="button" class="ms-btn" id="f-section-btn" aria-haspopup="listbox" aria-expanded="false">
@@ -217,9 +249,29 @@
       </button>
       <div class="ms-panel" id="f-section-panel" hidden></div>
     </div>
-    <select id="f-make"><option value="">All Makes</option></select>
-    <select id="f-category"><option value="">All Project Types</option></select>
+    <div class="ms" id="make-ms">
+      <span class="ms-label">Brand</span>
+      <button type="button" class="ms-btn" id="f-make-btn" aria-haspopup="listbox" aria-expanded="false">
+        <span id="f-make-btn-text">All Makes</span><span class="ms-arrow">▾</span>
+      </button>
+      <div class="ms-panel" id="f-make-panel" hidden></div>
+    </div>
+    <div class="ms" id="state-ms">
+      <span class="ms-label">State</span>
+      <button type="button" class="ms-btn" id="f-state-btn" aria-haspopup="listbox" aria-expanded="false">
+        <span id="f-state-btn-text">All States</span><span class="ms-arrow">▾</span>
+      </button>
+      <div class="ms-panel" id="f-state-panel" hidden></div>
+    </div>
+    <div class="ms" id="track-ms">
+      <span class="ms-label">Track</span>
+      <button type="button" class="ms-btn" id="f-track-btn" aria-haspopup="listbox" aria-expanded="false">
+        <span id="f-track-btn-text">All Tracks</span><span class="ms-arrow">▾</span>
+      </button>
+      <div class="ms-panel" id="f-track-panel" hidden></div>
+    </div>
     <button class="clear-btn" id="clear">Clear filters</button>
+    <button class="btn" id="open-report" style="padding:.5rem 1.1rem;font-size:.78rem">Export / Report</button>
     <span class="count-line" id="count"></span>
   </div>
 
@@ -268,6 +320,27 @@
 
 <div class="overlay" id="overlay"></div>
 <aside class="drawer" id="drawer" aria-label="Piano details"></aside>
+
+<div class="overlay" id="report-overlay"></div>
+<div class="report-modal" id="report-modal" aria-label="Filtered report">
+  <div class="report-head">
+    <div>
+      <div class="kicker">Piano Log — Filtered Report</div>
+      <h3 id="report-title">0 pianos</h3>
+    </div>
+    <button class="close" id="report-close" aria-label="Close">×</button>
+  </div>
+  <div class="report-toolbar">
+    <button type="button" id="report-select-all">Select all</button>
+    <button type="button" id="report-select-none">Select none</button>
+    <span class="report-count" id="report-selcount"></span>
+    <div class="report-actions">
+      <button class="btn ghost" id="report-csv">Export CSV</button>
+      <button class="btn" id="report-print">Print / Save as PDF</button>
+    </div>
+  </div>
+  <div class="report-body" id="report-body"></div>
+</div>
 <div id="tip"></div>
 
 <footer>
@@ -281,6 +354,47 @@
 const PAGE = 100;
 let DATA = null, view = [], shown = PAGE, sortKey = null, sortDir = 1;
 let selectedSections = new Set();   // Section filter: union — a piano matches if its section is in this set
+let selectedMakes = new Set();      // Brand filter: same union pattern as Section
+let selectedStates = new Set();     // State filter: same union pattern, plus an "Outside of UT" sentinel
+let selectedTracks = new Set();     // Track filter: same union pattern; a piano can carry multiple tags
+
+// There's no dedicated state column — the owner cell is free text (name,
+// phone, email, sometimes an address), so the state is pulled out with a
+// couple of regexes and cached per piano the first time it's needed.
+const STATE_ABBRS = new Set(['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
+  'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH',
+  'OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY','DC']);
+const OUTSIDE_UT = '__OUTSIDE_UT__';
+function pianoState(p){
+  if (p._state !== undefined) return p._state;
+  const zip = s => { const m = String(s||'').match(/\b([A-Z]{2})\s+\d{5}(-\d{4})?\b/); return m && STATE_ABBRS.has(m[1]) ? m[1] : ''; };
+  const comma = s => { const m = String(s||'').match(/,\s*([A-Z]{2})\b/); return m && STATE_ABBRS.has(m[1]) ? m[1] : ''; };
+  return p._state = zip(p.owner) || zip(p.qb_address) || comma(p.qb_city_state) || comma(p.owner) || '';
+}
+
+// Track filter vocabulary: the new TRACK column (col DT) is the source of
+// truth, but most older pianos predate it and only have the free-text
+// PROJECT CATEGORY column. Canonicalize both through the same keyword map so
+// e.g. "Full Restoration, Full Refinishing" and "rebuild, refinish" land on
+// the same "Rebuild"/"Refinish" tags. TRACK wins when present; the legacy
+// column is only consulted as a fallback for pianos TRACK hasn't reached yet.
+const TRACK_KEYWORDS = [
+  [/rebuild|restoration/i, 'Rebuild'],
+  [/refinish/i, 'Refinish'],
+  [/refurbish/i, 'Refurbish'],
+  [/technology/i, 'Technology'],
+  [/old player/i, 'Old Player'],
+  [/hybrid/i, 'Hybrid'],
+  [/repair/i, 'Repair'],
+  [/misc/i, 'Misc'],
+];
+function pianoTracks(p){
+  if (p._tracks) return p._tracks;
+  const src = (p.track||'').trim() || p.project_category || '';
+  const tags = new Set();
+  TRACK_KEYWORDS.forEach(([re,tag]) => { if (re.test(src)) tags.add(tag); });
+  return p._tracks = [...tags];
+}
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -502,32 +616,35 @@ function init(){
   hbars('#chart-groups', GROUP_ORDER.filter(g=>groups[g]).map(g=>[g,groups[g]]), g => { $('#f-group').value = g; apply(); openTab(PIANO_TAB); });
   const makes = {};
   DATA.pianos.forEach(p => { const m = (p.make||'').trim(); if(m) makes[m] = (makes[m]||0)+1; });
-  hbars('#chart-makes', Object.entries(makes).sort((a,b)=>b[1]-a[1]).slice(0,12), m => { $('#f-make').value = m; apply(); openTab(PIANO_TAB); });
+  hbars('#chart-makes', Object.entries(makes).sort((a,b)=>b[1]-a[1]).slice(0,12), m => { selectedMakes.clear(); selectedMakes.add(m); renderMakeFilter(); apply(); openTab(PIANO_TAB); });
 
   // filter options
   fillSelect('#f-group', GROUP_ORDER.filter(g=>groups[g]));
   renderSectionFilter();
-  fillSelect('#f-make', Object.keys(makes).filter(m=>makes[m]>=3).sort());
-  const cats = [...new Set(DATA.pianos.map(p=>p.project_category.trim()).filter(Boolean))].sort();
-  fillSelect('#f-category', cats.filter(c=>c.length<40));
+  renderMakeFilter();
+  renderStateFilter();
+  renderTrackFilter();
 
-  ['#q','#f-group','#f-make','#f-category'].forEach(s =>
+  ['#q','#f-group'].forEach(s =>
     $(s).oninput = apply);
   $('#clear').onclick = () => {
-    ['#q','#f-group','#f-make','#f-category'].forEach(s => $(s).value='');
+    ['#q','#f-group'].forEach(s => $(s).value='');
     selectedSections.clear(); renderSectionFilter();
+    selectedMakes.clear(); renderMakeFilter();
+    selectedStates.clear(); renderStateFilter();
+    selectedTracks.clear(); renderTrackFilter();
     apply();
   };
   $('#more').onclick = () => { shown += PAGE * 3; render(); };
 
-  document.querySelectorAll('thead th').forEach(th => th.onclick = () => {
+  document.querySelectorAll('#tbl thead th').forEach(th => th.onclick = () => {
     const k = th.dataset.sort;
     if (sortKey === k) { sortDir *= -1; } else { sortKey = k; sortDir = 1; }
     apply();
   });
 
   $('#overlay').onclick = closeDrawer;
-  document.onkeydown = e => { if(e.key==='Escape'){ closeDrawer(); closeMenu(); $('#f-section-panel').hidden = true; } };
+  document.onkeydown = e => { if(e.key==='Escape'){ closeDrawer(); closeMenu(); closeReport(); $('#f-section-panel').hidden = true; $('#f-make-panel').hidden = true; $('#f-state-panel').hidden = true; $('#f-track-panel').hidden = true; } };
 
   apply();
 
@@ -603,6 +720,135 @@ document.addEventListener('click', e => {
   if (!$('#section-ms').contains(e.target)) $('#f-section-panel').hidden = true;
 });
 
+// Brand filter: same checkbox-panel, union pattern as Section, but a flat
+// alphabetical list (no group headers — makes aren't grouped like sections).
+function renderMakeFilter(){
+  const panel = $('#f-make-panel');
+  const counts = {};
+  DATA.pianos.forEach(p => { const m = (p.make||'').trim(); if(m) counts[m] = (counts[m]||0)+1; });
+  const items = Object.keys(counts).filter(m=>counts[m]>=3).sort();
+  const allNames = new Set(items);
+  [...selectedMakes].forEach(n => { if (!allNames.has(n)) selectedMakes.delete(n); });
+  panel.innerHTML = `
+    <div class="ms-actions">
+      <button type="button" id="make-clear">Clear</button>
+      <button type="button" id="make-all">Select all</button>
+    </div>${items.map(name => `<label><input type="checkbox" value="${esc(name)}" ${selectedMakes.has(name)?'checked':''}> ${esc(name)}</label>`).join('')}`;
+  panel.querySelectorAll('input[type=checkbox]').forEach(cb => cb.onchange = () => {
+    if (cb.checked) selectedMakes.add(cb.value); else selectedMakes.delete(cb.value);
+    updateMakeBtnLabel(); apply();
+  });
+  $('#make-clear').onclick = () => { selectedMakes.clear(); renderMakeFilter(); apply(); };
+  $('#make-all').onclick = () => { items.forEach(m => selectedMakes.add(m)); renderMakeFilter(); apply(); };
+  updateMakeBtnLabel();
+}
+
+function updateMakeBtnLabel(){
+  const n = selectedMakes.size;
+  $('#f-make-btn-text').textContent = n === 0 ? 'All Makes'
+    : n === 1 ? [...selectedMakes][0] : `${n} makes selected`;
+  $('#f-make-btn').classList.toggle('active', n > 0);
+}
+
+$('#f-make-btn').onclick = e => {
+  e.stopPropagation();
+  const panel = $('#f-make-panel'), willOpen = panel.hidden;
+  panel.hidden = !willOpen;
+  $('#f-make-btn').setAttribute('aria-expanded', String(willOpen));
+};
+document.addEventListener('click', e => {
+  if (!$('#make-ms').contains(e.target)) $('#f-make-panel').hidden = true;
+});
+
+// State filter: same checkbox-panel union pattern, plus a pinned "Outside of
+// Utah" option at the top (checked alongside specific states if you want,
+// e.g. "UT" + "Outside of UT" together shows everything with a known state).
+function renderStateFilter(){
+  const panel = $('#f-state-panel');
+  const counts = {};
+  let outsideUT = 0;
+  DATA.pianos.forEach(p => { const st = pianoState(p); if (st){ counts[st] = (counts[st]||0)+1; if (st !== 'UT') outsideUT++; } });
+  const items = Object.keys(counts).sort();
+  const allKeys = new Set([...items, OUTSIDE_UT]);
+  [...selectedStates].forEach(k => { if (!allKeys.has(k)) selectedStates.delete(k); });
+  const row = (value, label, n) => `<label><span class="ms-row-main"><input type="checkbox" value="${esc(value)}" ${selectedStates.has(value)?'checked':''}> ${esc(label)}</span><span class="ms-count">${n.toLocaleString()}</span></label>`;
+  panel.innerHTML = `
+    <div class="ms-actions">
+      <button type="button" id="state-clear">Clear</button>
+      <button type="button" id="state-all">Select all</button>
+    </div>
+    ${row(OUTSIDE_UT, 'Outside of Utah', outsideUT)}
+    <hr class="ms-sep">
+    ${items.map(st => row(st, st, counts[st])).join('')}`;
+  panel.querySelectorAll('input[type=checkbox]').forEach(cb => cb.onchange = () => {
+    if (cb.checked) selectedStates.add(cb.value); else selectedStates.delete(cb.value);
+    updateStateBtnLabel(); apply();
+  });
+  $('#state-clear').onclick = () => { selectedStates.clear(); renderStateFilter(); apply(); };
+  $('#state-all').onclick = () => { allKeys.forEach(k => selectedStates.add(k)); renderStateFilter(); apply(); };
+  updateStateBtnLabel();
+}
+
+function updateStateBtnLabel(){
+  const n = selectedStates.size;
+  const label = n === 0 ? 'All States'
+    : n === 1 ? ([...selectedStates][0] === OUTSIDE_UT ? 'Outside of Utah' : [...selectedStates][0])
+    : `${n} selected`;
+  $('#f-state-btn-text').textContent = label;
+  $('#f-state-btn').classList.toggle('active', n > 0);
+}
+
+$('#f-state-btn').onclick = e => {
+  e.stopPropagation();
+  const panel = $('#f-state-panel'), willOpen = panel.hidden;
+  panel.hidden = !willOpen;
+  $('#f-state-btn').setAttribute('aria-expanded', String(willOpen));
+};
+document.addEventListener('click', e => {
+  if (!$('#state-ms').contains(e.target)) $('#f-state-panel').hidden = true;
+});
+
+// Track filter: same checkbox-panel union pattern. A piano can carry more
+// than one tag (e.g. "Rebuild, Refinish"), so it matches if ANY of its tags
+// is in the selected set.
+function renderTrackFilter(){
+  const panel = $('#f-track-panel');
+  const counts = {};
+  DATA.pianos.forEach(p => pianoTracks(p).forEach(t => counts[t] = (counts[t]||0)+1));
+  const items = Object.keys(counts).sort();
+  const allNames = new Set(items);
+  [...selectedTracks].forEach(n => { if (!allNames.has(n)) selectedTracks.delete(n); });
+  panel.innerHTML = `
+    <div class="ms-actions">
+      <button type="button" id="track-clear">Clear</button>
+      <button type="button" id="track-all">Select all</button>
+    </div>${items.map(name => `<label><span class="ms-row-main"><input type="checkbox" value="${esc(name)}" ${selectedTracks.has(name)?'checked':''}> ${esc(name)}</span><span class="ms-count">${counts[name].toLocaleString()}</span></label>`).join('')}`;
+  panel.querySelectorAll('input[type=checkbox]').forEach(cb => cb.onchange = () => {
+    if (cb.checked) selectedTracks.add(cb.value); else selectedTracks.delete(cb.value);
+    updateTrackBtnLabel(); apply();
+  });
+  $('#track-clear').onclick = () => { selectedTracks.clear(); renderTrackFilter(); apply(); };
+  $('#track-all').onclick = () => { items.forEach(t => selectedTracks.add(t)); renderTrackFilter(); apply(); };
+  updateTrackBtnLabel();
+}
+
+function updateTrackBtnLabel(){
+  const n = selectedTracks.size;
+  $('#f-track-btn-text').textContent = n === 0 ? 'All Tracks'
+    : n === 1 ? [...selectedTracks][0] : `${n} tracks selected`;
+  $('#f-track-btn').classList.toggle('active', n > 0);
+}
+
+$('#f-track-btn').onclick = e => {
+  e.stopPropagation();
+  const panel = $('#f-track-panel'), willOpen = panel.hidden;
+  panel.hidden = !willOpen;
+  $('#f-track-btn').setAttribute('aria-expanded', String(willOpen));
+};
+document.addEventListener('click', e => {
+  if (!$('#track-ms').contains(e.target)) $('#f-track-panel').hidden = true;
+});
+
 function hbars(sel, pairs, onClick){
   const max = Math.max(...pairs.map(p=>p[1]));
   $(sel).innerHTML = pairs.map(([name,n]) =>
@@ -622,10 +868,12 @@ function hbars(sel, pairs, onClick){
 function apply(){
   const q = $('#q').value.trim().toLowerCase();
   const g = $('#f-group').value, s = selectedSections.size,
-        m = $('#f-make').value, c = $('#f-category').value;
+        m = selectedMakes.size, c = selectedTracks.size, st = selectedStates.size;
   view = DATA.pianos.filter(p =>
     (!g || p.group===g) && (!selectedSections.size || selectedSections.has(p.section)) &&
-    (!m || (p.make||'').trim()===m) && (!c || p.project_category.trim()===c) &&
+    (!selectedMakes.size || selectedMakes.has((p.make||'').trim())) &&
+    (!selectedTracks.size || pianoTracks(p).some(t => selectedTracks.has(t))) &&
+    (!selectedStates.size || (() => { const ps = pianoState(p); return selectedStates.has(ps) || (selectedStates.has(OUTSIDE_UT) && ps && ps !== 'UT'); })()) &&
     (!q || [p.summary,p.serial,p.make,p.model,p.owner,p.notes,p.year,p.category,p.location_status,p.milestones,p.subsection]
       .some(v => v && v.toLowerCase().includes(q))));
   if (sortKey){
@@ -643,9 +891,9 @@ function apply(){
       return x.localeCompare(y)*sortDir;
     });
   }
-  document.querySelectorAll('thead th').forEach(th =>
+  document.querySelectorAll('#tbl thead th').forEach(th =>
     th.querySelector('.arrow').textContent = th.dataset.sort===sortKey ? (sortDir>0?'▲':'▼') : '');
-  const any = q||g||s||m||c;
+  const any = q||g||s||m||c||st;
   $('#clear').classList.toggle('show', !!any);
   // active tile highlight
   document.querySelectorAll('.tile').forEach(t =>
@@ -825,6 +1073,105 @@ async function savePiano(p){
 }
 const field = (k,v) => `<div class="field"><div class="k">${esc(k)}</div><div class="v">${linkify(v)}</div></div>`;
 function closeDrawer(){ $('#overlay').classList.remove('open'); $('#drawer').classList.remove('open'); }
+
+/* ---------- Export / Report: review-before-export on the current filter view ---------- */
+// Columns shown in the report table AND exported to CSV/print, so all three
+// stay in sync automatically.
+const REPORT_COLS = [
+  ['Piano', p => p.summary || [p.year,p.make,p.model].filter(Boolean).join(' ')],
+  ['Serial', p => firstLine(p.serial)],
+  ['Year', p => p.year],
+  ['Section', p => p.section],
+  ['Track', p => pianoTracks(p).join(', ') || p.project_category || ''],
+  ['Status', p => p.status],
+  ['Location', p => p.location_status],
+  ['Owner', p => p.owner_name || p.owner],
+  ['Entry / Exit', p => p.entry_exit_dates],
+];
+
+let reportIncluded = new Set();   // ids of pianos currently checked "in" for this report
+
+function openReport(){
+  reportIncluded = new Set(view.map(p => p.id));
+  renderReportTable();
+  $('#report-overlay').classList.add('open');
+  $('#report-modal').classList.add('open');
+}
+function closeReport(){
+  $('#report-overlay').classList.remove('open');
+  $('#report-modal').classList.remove('open');
+}
+
+function renderReportTable(){
+  $('#report-title').textContent = `${view.length.toLocaleString()} pianos in current filter`;
+  $('#report-body').innerHTML = `<table>
+    <thead><tr><th></th>${REPORT_COLS.map(([l])=>`<th>${esc(l)}</th>`).join('')}</tr></thead>
+    <tbody>${view.map(p => `
+      <tr data-id="${p.id}" class="${reportIncluded.has(p.id)?'':'excluded'}">
+        <td><input type="checkbox" ${reportIncluded.has(p.id)?'checked':''}></td>
+        ${REPORT_COLS.map(([,fn]) => `<td>${esc(fn(p) ?? '')}</td>`).join('')}
+      </tr>`).join('')}</tbody>
+  </table>`;
+  $('#report-body').querySelectorAll('input[type=checkbox]').forEach(cb => cb.onchange = () => {
+    const tr = cb.closest('tr'), id = +tr.dataset.id;
+    if (cb.checked) reportIncluded.add(id); else reportIncluded.delete(id);
+    tr.classList.toggle('excluded', !cb.checked);
+    updateReportSelCount();
+  });
+  updateReportSelCount();
+}
+function updateReportSelCount(){
+  $('#report-selcount').textContent = `${reportIncluded.size.toLocaleString()} of ${view.length.toLocaleString()} selected`;
+}
+
+$('#open-report').onclick = openReport;
+$('#report-close').onclick = closeReport;
+$('#report-overlay').onclick = closeReport;
+$('#report-select-all').onclick = () => { reportIncluded = new Set(view.map(p=>p.id)); renderReportTable(); };
+$('#report-select-none').onclick = () => { reportIncluded = new Set(); renderReportTable(); };
+
+function reportRows(){ return view.filter(p => reportIncluded.has(p.id)); }
+
+function csvCell(v){
+  const s = String(v ?? '');
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+$('#report-csv').onclick = () => {
+  const rows = reportRows();
+  const lines = [REPORT_COLS.map(([l])=>csvCell(l)).join(',')]
+    .concat(rows.map(p => REPORT_COLS.map(([,fn])=>csvCell(fn(p))).join(',')));
+  const blob = new Blob([lines.join('\r\n')], {type: 'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `piano-log-report-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(a.href);
+};
+
+$('#report-print').onclick = () => {
+  const rows = reportRows();
+  const w = window.open('', '_blank');
+  if (!w){ alert('Please allow popups for this site to print the report.'); return; }
+  w.document.write(`<!doctype html><html><head><title>Piano Log Report</title><meta charset="utf-8">
+    <style>
+      body{font-family:Arial,Helvetica,sans-serif;color:#121212;margin:2rem}
+      h1{font-size:1.2rem;margin-bottom:.2rem}
+      .meta{color:#666;font-size:.85rem;margin-bottom:1.2rem}
+      table{width:100%;border-collapse:collapse;font-size:.8rem}
+      th,td{border:1px solid #ccc;padding:.4rem .5rem;text-align:left;vertical-align:top}
+      th{background:#f2f2f2;text-transform:uppercase;font-size:.68rem;letter-spacing:.04em}
+      @media print{ body{margin:.5in} }
+    </style></head><body>
+    <h1>Brigham Larson Pianos — Piano Log Report</h1>
+    <div class="meta">${rows.length.toLocaleString()} pianos · generated ${esc(new Date().toLocaleString())}</div>
+    <table><thead><tr>${REPORT_COLS.map(([l])=>`<th>${esc(l)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(p => `<tr>${REPORT_COLS.map(([,fn])=>`<td>${esc(fn(p) ?? '')}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>
+    </body></html>`);
+  w.document.close();
+  w.onload = () => w.print();
+  setTimeout(() => w.print(), 300);   // some browsers fire onload before layout settles
+};
 </script>
 </body>
 </html>
