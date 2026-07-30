@@ -40,13 +40,22 @@ def meaningful(row):
     """Cells with real content (not lone punctuation)."""
     return [c for c in row if c.strip() and c.strip() not in {'.', '`', 'x', '-'}]
 
+HEADER_PAREN_RE = re.compile(r'\([^)]*\)')
+
 def section_header(row):
     filled = meaningful(row)
     if not filled or len(filled) > 3:
         return None
     owner = cell(row, 1)
-    if owner and len(owner) < 60 and owner == owner.upper() and not any(ch.isdigit() for ch in owner):
-        return owner
+    if not owner:
+        return None
+    # The ALL-CAPS check ignores parenthetical asides and line breaks —
+    # e.g. "SOLD OR COMPLETED (but not gone yet)\nREADY FOR PHOTOS/VIDEOS"
+    # is still a section header despite the lowercase note in parens.
+    flat = ' '.join(owner.split('\n'))
+    core = re.sub(r'\s+', ' ', HEADER_PAREN_RE.sub('', flat)).strip()
+    if core and len(core) < 60 and core == core.upper() and not any(ch.isdigit() for ch in core):
+        return re.sub(r'\s+', ' ', flat).strip()
     return None
 
 ARTIFACT_DATE = re.compile(r'^\s*(12/31/1899|1/[12]/1900)\s*$')

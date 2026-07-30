@@ -90,6 +90,28 @@
   .controls input[type=search]{flex:1 1 260px;padding:.6rem .9rem;border:1px solid var(--ink-2);border-radius:var(--radius);font-size:.95rem;font-family:inherit}
   .controls input[type=search]:focus{outline:2px solid var(--red);outline-offset:1px;border-color:transparent}
   .controls select{padding:.6rem .7rem;border:1px solid var(--line);border-radius:var(--radius);font-size:.85rem;font-family:inherit;background:var(--paper);color:var(--ink);max-width:230px}
+
+  /* multi-select section filter */
+  .ms{position:relative;display:flex;flex-direction:column;gap:.2rem}
+  .ms-label{font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+  .ms-btn{padding:.6rem .7rem;border:1px solid var(--line);border-radius:var(--radius);font-size:.85rem;
+          font-family:inherit;background:var(--paper);color:var(--ink);max-width:230px;min-width:170px;
+          text-align:left;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+  .ms-btn span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ms-btn:hover{border-color:var(--ink-2)}
+  .ms-btn.active{border-color:var(--red);color:var(--red)}
+  .ms-arrow{font-size:.7rem;color:var(--ink-3);flex:none}
+  .ms-panel{position:absolute;top:100%;left:0;z-index:50;margin-top:.3rem;background:var(--paper);
+            border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,.14);
+            max-height:380px;overflow-y:auto;min-width:300px;padding:.4rem 0}
+  .ms-panel .grp-head{padding:.55rem .9rem .3rem;font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;
+                       color:var(--ink-3);font-weight:600}
+  .ms-panel label{display:flex;align-items:center;gap:.55rem;padding:.38rem .9rem;font-size:.85rem;cursor:pointer}
+  .ms-panel label:hover{background:var(--cream)}
+  .ms-panel input[type=checkbox]{accent-color:var(--red);width:15px;height:15px;flex:none}
+  .ms-actions{display:flex;gap:.9rem;padding:.2rem .9rem .5rem;border-bottom:1px solid var(--line);margin-bottom:.3rem}
+  .ms-actions button{border:none;background:none;color:var(--red);font-size:.76rem;cursor:pointer;
+                      text-decoration:underline;text-underline-offset:2px;padding:0}
   .count-line{font-size:.8rem;color:var(--ink-3);margin-left:auto}
   .clear-btn{border:none;background:none;color:var(--red);font-size:.8rem;letter-spacing:.06em;cursor:pointer;text-decoration:underline;text-underline-offset:3px;display:none}
   .clear-btn.show{display:inline}
@@ -188,7 +210,13 @@
   <div class="controls">
     <input type="search" id="q" placeholder="Search make, model, serial, owner, notes…" autocomplete="off">
     <select id="f-group"><option value="">All Groups</option></select>
-    <select id="f-section"><option value="">All Sections</option></select>
+    <div class="ms" id="section-ms">
+      <span class="ms-label">Section</span>
+      <button type="button" class="ms-btn" id="f-section-btn" aria-haspopup="listbox" aria-expanded="false">
+        <span id="f-section-btn-text">All Sections</span><span class="ms-arrow">▾</span>
+      </button>
+      <div class="ms-panel" id="f-section-panel" hidden></div>
+    </div>
     <select id="f-make"><option value="">All Makes</option></select>
     <select id="f-category"><option value="">All Project Types</option></select>
     <button class="clear-btn" id="clear">Clear filters</button>
@@ -252,6 +280,7 @@
 <script>
 const PAGE = 100;
 let DATA = null, view = [], shown = PAGE, sortKey = null, sortDir = 1;
+let selectedSections = new Set();   // Section filter: union — a piano matches if its section is in this set
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -465,7 +494,7 @@ function init(){
   // clicking a stat filters the log and jumps to it
   $('#tiles').onclick = e => {
     const t = e.target.closest('.tile'); if(!t) return;
-    $('#f-group').value = t.dataset.group; $('#f-section').value = '';
+    $('#f-group').value = t.dataset.group; selectedSections.clear(); renderSectionFilter();
     apply(); openTab(PIANO_TAB);
   };
 
@@ -477,15 +506,16 @@ function init(){
 
   // filter options
   fillSelect('#f-group', GROUP_ORDER.filter(g=>groups[g]));
-  fillSelect('#f-section', DATA.sections.map(s=>s.name));
+  renderSectionFilter();
   fillSelect('#f-make', Object.keys(makes).filter(m=>makes[m]>=3).sort());
   const cats = [...new Set(DATA.pianos.map(p=>p.project_category.trim()).filter(Boolean))].sort();
   fillSelect('#f-category', cats.filter(c=>c.length<40));
 
-  ['#q','#f-group','#f-section','#f-make','#f-category'].forEach(s =>
+  ['#q','#f-group','#f-make','#f-category'].forEach(s =>
     $(s).oninput = apply);
   $('#clear').onclick = () => {
-    ['#q','#f-group','#f-section','#f-make','#f-category'].forEach(s => $(s).value='');
+    ['#q','#f-group','#f-make','#f-category'].forEach(s => $(s).value='');
+    selectedSections.clear(); renderSectionFilter();
     apply();
   };
   $('#more').onclick = () => { shown += PAGE * 3; render(); };
@@ -497,7 +527,7 @@ function init(){
   });
 
   $('#overlay').onclick = closeDrawer;
-  document.onkeydown = e => { if(e.key==='Escape'){ closeDrawer(); closeMenu(); } };
+  document.onkeydown = e => { if(e.key==='Escape'){ closeDrawer(); closeMenu(); $('#f-section-panel').hidden = true; } };
 
   apply();
 
@@ -528,6 +558,51 @@ function fillSelect(sel, items){
   el.insertAdjacentHTML('beforeend', items.map(i=>`<option>${esc(i)}</option>`).join(''));
 }
 
+// Section filter: a checkbox panel (grouped like the stat tiles) instead of a
+// single-select, so multiple sections (e.g. "Custom Shopwork" AND "Current
+// Shopwork (Spec)") can be shown at once — a piano matches if its section is
+// in the selected set.
+function renderSectionFilter(){
+  const panel = $('#f-section-panel');
+  const bySection = {};
+  DATA.sections.forEach(s => (bySection[s.group] = bySection[s.group] || []).push(s.name));
+  const allNames = new Set(DATA.sections.map(s => s.name));
+  [...selectedSections].forEach(n => { if (!allNames.has(n)) selectedSections.delete(n); });
+  const groupHtml = GROUP_ORDER.filter(g => bySection[g]).map(g => `
+    <div class="grp-head">${esc(g)}</div>
+    ${bySection[g].map(name => `<label><input type="checkbox" value="${esc(name)}" ${selectedSections.has(name)?'checked':''}> ${esc(name)}</label>`).join('')}
+  `).join('');
+  panel.innerHTML = `
+    <div class="ms-actions">
+      <button type="button" id="sec-clear">Clear</button>
+      <button type="button" id="sec-all">Select all</button>
+    </div>${groupHtml}`;
+  panel.querySelectorAll('input[type=checkbox]').forEach(cb => cb.onchange = () => {
+    if (cb.checked) selectedSections.add(cb.value); else selectedSections.delete(cb.value);
+    updateSectionBtnLabel(); apply();
+  });
+  $('#sec-clear').onclick = () => { selectedSections.clear(); renderSectionFilter(); apply(); };
+  $('#sec-all').onclick = () => { DATA.sections.forEach(s => selectedSections.add(s.name)); renderSectionFilter(); apply(); };
+  updateSectionBtnLabel();
+}
+
+function updateSectionBtnLabel(){
+  const n = selectedSections.size;
+  $('#f-section-btn-text').textContent = n === 0 ? 'All Sections'
+    : n === 1 ? [...selectedSections][0] : `${n} sections selected`;
+  $('#f-section-btn').classList.toggle('active', n > 0);
+}
+
+$('#f-section-btn').onclick = e => {
+  e.stopPropagation();
+  const panel = $('#f-section-panel'), willOpen = panel.hidden;
+  panel.hidden = !willOpen;
+  $('#f-section-btn').setAttribute('aria-expanded', String(willOpen));
+};
+document.addEventListener('click', e => {
+  if (!$('#section-ms').contains(e.target)) $('#f-section-panel').hidden = true;
+});
+
 function hbars(sel, pairs, onClick){
   const max = Math.max(...pairs.map(p=>p[1]));
   $(sel).innerHTML = pairs.map(([name,n]) =>
@@ -546,10 +621,10 @@ function hbars(sel, pairs, onClick){
 
 function apply(){
   const q = $('#q').value.trim().toLowerCase();
-  const g = $('#f-group').value, s = $('#f-section').value,
+  const g = $('#f-group').value, s = selectedSections.size,
         m = $('#f-make').value, c = $('#f-category').value;
   view = DATA.pianos.filter(p =>
-    (!g || p.group===g) && (!s || p.section===s) &&
+    (!g || p.group===g) && (!selectedSections.size || selectedSections.has(p.section)) &&
     (!m || (p.make||'').trim()===m) && (!c || p.project_category.trim()===c) &&
     (!q || [p.summary,p.serial,p.make,p.model,p.owner,p.notes,p.year,p.category,p.location_status,p.milestones,p.subsection]
       .some(v => v && v.toLowerCase().includes(q))));

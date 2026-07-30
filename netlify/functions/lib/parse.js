@@ -34,11 +34,21 @@ function meaningful(row) {
   return row.filter(c => { const s = String(c).trim(); return s && !TRIVIAL.has(s); });
 }
 
+const HEADER_PAREN_RE = /\([^)]*\)/g;
+
 function sectionHeader(row) {
   const filled = meaningful(row);
   if (!filled.length || filled.length > 3) return null;
   const owner = cell(row, 1);
-  if (owner && owner.length < 60 && owner === owner.toUpperCase() && !/\d/.test(owner)) return owner;
+  if (!owner) return null;
+  // The ALL-CAPS check ignores parenthetical asides and line breaks —
+  // e.g. "SOLD OR COMPLETED (but not gone yet)\nREADY FOR PHOTOS/VIDEOS"
+  // is still a section header despite the lowercase note in parens.
+  const flat = owner.split('\n').join(' ');
+  const core = flat.replace(HEADER_PAREN_RE, '').replace(/\s+/g, ' ').trim();
+  if (core && core.length < 60 && core === core.toUpperCase() && !/\d/.test(core)) {
+    return flat.replace(/\s+/g, ' ').trim();
+  }
   return null;
 }
 
