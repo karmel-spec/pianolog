@@ -652,6 +652,11 @@ function init(){
   // If the query pinpoints one piano by serial, open its drawer directly.
   // sessionStorage carries the query across the login redirect (see login.html).
   let deepQ = new URLSearchParams(location.search).get('q');
+  // legacy shop-tag QRs and old Store Map links used #piano=SERIAL
+  if (!deepQ){
+    const hm = /piano=([^&]+)/.exec(location.hash || '');
+    if (hm) deepQ = decodeURIComponent(hm[1]);
+  }
   if (!deepQ && sessionStorage.getItem('pianolog.next')){
     deepQ = new URLSearchParams(sessionStorage.getItem('pianolog.next')).get('q');
     if (deepQ) history.replaceState(null, '', '/?q=' + encodeURIComponent(deepQ));
