@@ -205,6 +205,16 @@
   .save-msg{font-size:.8rem;color:var(--red);flex:1 1 12rem}
   .save-msg.ok{color:#1a7a1a}
 
+  /* training cards */
+  .training-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1.2rem;margin-top:1rem}
+  .training-card{border:1px solid var(--line);border-radius:var(--radius);padding:1.2rem 1.4rem;transition:background .15s,border-color .15s}
+  .training-card:hover{background:var(--cream);border-color:var(--red)}
+  .training-card h3{font-size:.92rem;letter-spacing:.06em;font-weight:600;color:var(--ink);margin-bottom:.35rem}
+  .training-card p{font-size:.85rem;color:var(--ink-2);line-height:1.5}
+  .training-card .actions{display:flex;gap:1.4rem;flex-wrap:wrap;margin-top:.7rem}
+  .training-card .actions a{font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--red);text-decoration:none;white-space:nowrap}
+  .training-card .actions a:hover{text-decoration:underline;text-underline-offset:3px}
+
   /* chart tooltip */
   #tip{position:fixed;pointer-events:none;background:var(--ink);color:#fff;font-size:.78rem;padding:.4rem .6rem;border-radius:4px;z-index:90;display:none;white-space:nowrap}
 </style>
@@ -301,6 +311,11 @@
     <div class="chart"><h3>Pianos by Section Group</h3><div id="chart-groups"></div></div>
     <div class="chart"><h3>Top Makes (All Time)</h3><div id="chart-makes"></div></div>
   </div>
+</div>
+
+<div id="view-training" style="display:none">
+  <h2 class="section-head">🎓 Training</h2>
+  <div class="training-grid" id="training-grid"></div>
 </div>
 
 <div id="view-tab" style="display:none">
@@ -409,12 +424,41 @@ const badgeClass = g => g === 'Sold / Exited' ? 'sold' : g === 'Shopwork' ? 'sho
 
 const PIANO_TAB = 'Piano Log';
 const STATS_TAB = 'Stats';
+const TRAINING_TAB = 'Training';
+
+// Training guides shown on the Training page (hamburger menu → Training).
+// To add a new one, add a {title, desc, href} line here — nothing else to
+// touch. Optional: a `video` link renders a "▶ Watch video" action too.
+const TRAINING_ITEMS = [
+  {title: 'Store Map User Guide',
+   desc: 'How to use the BLP Store Map: signing in, finding pianos, clocking work time, paperwork & photos.',
+   href: 'https://docs.google.com/document/d/1aq3oTa6pxr6AhquS7pbJakAY4q4iPc_nUJW4yLMXDOM/edit?usp=sharing',
+   video: 'https://youtu.be/1zDlnks5CC0'},
+  {title: 'BLP Restoration Handbook',
+   desc: 'The complete BLP restoration handbook.',
+   href: 'https://docs.google.com/document/d/1at8y6h6pphLmAL5gaE2TzfHeDv5Xn9xdbWVdozvxhxA/edit'},
+  {title: 'Professional Standards & Team Culture',
+   desc: 'BLP professional standards: punctuality, dress code, safety, workplace conduct & cleanliness.',
+   href: 'https://docs.google.com/document/d/1PYw5R8o9k8iLtCIfRkWVcno2hqqYQcS5-8izyM4Fbsk/edit'},
+];
+
 let TABS = [], activeTab = PIANO_TAB;
 const TAB_DATA = {};   // title -> generic tab payload
 let tView = [], tShown = PAGE, tSortCol = -1, tSortDir = 1, tCols = [];
 
 loadData();
 loadTabs();
+
+// Training page is static — render its cards once, straight from TRAINING_ITEMS.
+$('#training-grid').innerHTML = TRAINING_ITEMS.map(t => `
+  <div class="training-card">
+    <h3>${esc(t.title)}</h3>
+    <p>${esc(t.desc)}</p>
+    <div class="actions">
+      <a href="${esc(t.href)}" target="_blank" rel="noopener">Open guide ↗</a>
+      ${t.video ? `<a href="${esc(t.video)}" target="_blank" rel="noopener">▶ Watch video</a>` : ''}
+    </div>
+  </div>`).join('');
 
 function loadData(force){
   const note = $('#meta-note');
@@ -443,7 +487,7 @@ function renderMenu(){
   const link = t => `<a href="#${encodeURIComponent(t)}" data-tab="${esc(t)}">${esc(t)}</a>`;
   const sheetTabs = TABS.filter(t => t !== PIANO_TAB);
   $('#menu-nav').innerHTML =
-    link(PIANO_TAB) + link(STATS_TAB) +
+    link(PIANO_TAB) + link(STATS_TAB) + link(TRAINING_TAB) +
     (sheetTabs.length ? `<div class="menu-sep">Spreadsheet tabs</div>` + sheetTabs.map(link).join('') : '');
   $('#menu-nav').onclick = e => {
     const a = e.target.closest('a'); if(!a) return;
@@ -460,7 +504,7 @@ function loadTabs(){
     TABS = [PIANO_TAB, ...TABS.filter(t => t !== PIANO_TAB)];
     renderMenu();
     const fromHash = decodeURIComponent(location.hash.slice(1) || '');
-    openTab(TABS.includes(fromHash) || fromHash === STATS_TAB ? fromHash : PIANO_TAB);
+    openTab(TABS.includes(fromHash) || fromHash === STATS_TAB || fromHash === TRAINING_TAB ? fromHash : PIANO_TAB);
   }).catch(() => { TABS = [PIANO_TAB]; renderMenu(); });
 }
 
@@ -470,11 +514,12 @@ function openTab(title){
     history.replaceState(null, '', '#' + encodeURIComponent(title));
   document.querySelectorAll('#menu-nav a').forEach(a =>
     a.classList.toggle('active', a.dataset.tab === title));
-  const isPiano = title === PIANO_TAB, isStats = title === STATS_TAB;
+  const isPiano = title === PIANO_TAB, isStats = title === STATS_TAB, isTraining = title === TRAINING_TAB;
   $('#view-pianolog').style.display = isPiano ? '' : 'none';
   $('#view-stats').style.display = isStats ? '' : 'none';
-  $('#view-tab').style.display = (isPiano || isStats) ? 'none' : '';
-  if (!isPiano && !isStats) showTab(title);
+  $('#view-training').style.display = isTraining ? '' : 'none';
+  $('#view-tab').style.display = (isPiano || isStats || isTraining) ? 'none' : '';
+  if (!isPiano && !isStats && !isTraining) showTab(title);
   else if (DATA) updateMeta();
   closeMenu();
 }
@@ -579,7 +624,7 @@ function openTabDrawer(d, r){
 }
 
 function updateMeta(tab){
-  if (activeTab === PIANO_TAB || activeTab === STATS_TAB){
+  if (activeTab === PIANO_TAB || activeTab === STATS_TAB || activeTab === TRAINING_TAB){
     if (!DATA) return;
     const src = DATA.live
       ? `<span style="color:#1a7a1a">●</span> Live from Google Sheets · ${esc(DATA.generated_at)}`
@@ -595,7 +640,7 @@ function updateMeta(tab){
 function init(){
   updateMeta();
   $('#refresh').onclick = () =>
-    (activeTab === PIANO_TAB || activeTab === STATS_TAB) ? loadData(true) : showTab(activeTab, true);
+    (activeTab === PIANO_TAB || activeTab === STATS_TAB || activeTab === TRAINING_TAB) ? loadData(true) : showTab(activeTab, true);
 
   const groups = {};
   DATA.pianos.forEach(p => groups[p.group] = (groups[p.group]||0)+1);
