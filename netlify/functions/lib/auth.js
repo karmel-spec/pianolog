@@ -11,7 +11,7 @@ const { getTabValues } = require('./sheets');
 
 const MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 const GOOGLE_CLIENT_ID =
-  '118454775893-17u7t3glh8eu4kffhe7b42jl71apre4f.apps.googleusercontent.com';
+  '523632876512-i2csml8jkg7c3knaone1sf0886oppfek.apps.googleusercontent.com';
 
 // Full access: company-domain accounts + the owner gmails. Extend with the
 // PIANOLOG_ADMINS env var (comma-separated emails) — no code change needed.

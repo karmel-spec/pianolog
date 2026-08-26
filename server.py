@@ -52,7 +52,7 @@ SESSIONS = {}   # token -> {'role': 'admin'|'tech', 'email': str}; reset on rest
 # Google sign-in maps an email to a role. The "App Access" spreadsheet tab
 # (Email | Role | Notes) is the roster Brigham manages; company-domain
 # accounts are always admin; the static fallbacks below cover everyone else.
-GOOGLE_CLIENT_ID = '118454775893-17u7t3glh8eu4kffhe7b42jl71apre4f.apps.googleusercontent.com'
+GOOGLE_CLIENT_ID = '523632876512-i2csml8jkg7c3knaone1sf0886oppfek.apps.googleusercontent.com'
 ADMIN_DOMAIN = 'brighamlarsonpianos.com'
 ADMIN_EMAILS = [
     'brighamlarson@gmail.com',
