@@ -12,13 +12,18 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COLS = {
     'updated_at': 0, 'owner': 1, 'serial': 2, 'summary': 3, 'year': 4,
     'make': 5, 'model': 6, 'size': 7, 'published': 8, 'category': 9,
-    'finish': 10, 'sheen': 11, 'trim': 12, 'before_photos': 13,
-    'after_photos': 15, 'before_video': 16, 'after_video': 17,
+    'finish': 10, 'sheen': 11, 'trim': 12,
+    'before_photos_hold': 13,  # "Before Photos Not Published Until After Sale" flag
+    'before_photos': 14, 'before_video': 15, 'after_photos': 16, 'after_video': 17,
     'status': 18, 'bench': 19, 'location_status': 20, 'entry_exit_dates': 21,
     'receiving_exiting': 22, 'project_category': 23, 'cogs_invoice': 24,
     'agreements_price': 25, 'notes': 26, 'completion_date': 27,
     'isolved_job': 28, 'qbo': 29, 'tags': 30,
     'down_payment_date': 32, 'milestones': 35,
+    'warranty': 64,  # col BM ("WARRANTY", e.g. "3 Year BLP")
+    'new_piano_warranty_registered': 87,  # col CJ (Hailun/Hallet Davis new-piano warranty)
+    'qrs_warranty_registered': 88,        # col CK
+    'warranty_sent_to_customer': 89,      # col CL
     'current_phase': 118,  # col DO ("CURRENT PHASE", e.g. "In Queue")
     'track': 123,  # col DT ("TRACK", e.g. "Rebuild, Refinish")
 }
