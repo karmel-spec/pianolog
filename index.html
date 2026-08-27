@@ -1219,7 +1219,8 @@ $('#report-print').onclick = () => {
     <table><thead><tr>${REPORT_COLS.map(([l])=>`<th>${esc(l)}</th>`).join('')}</tr></thead>
     <tbody>${rows.map(p => `<tr>${REPORT_COLS.map(([,fn])=>`<td>${esc(fn(p) ?? '')}</td>`).join('')}</tr>`).join('')}</tbody>
     </table>
-    </body></html>`);
+    <script src="https://blpsalesapp.netlify.app/suggest.js" defer data-app="Piano Log App"></script>
+</body></html>`);
   w.document.close();
   w.onload = () => w.print();
   setTimeout(() => w.print(), 300);   // some browsers fire onload before layout settles
