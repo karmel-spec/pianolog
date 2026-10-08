@@ -26,8 +26,19 @@ async function rpc(name, body, timeoutMs) {
   return txt ? JSON.parse(txt) : null;
 }
 
+// the RPC drops empty-string fields to halve the payload; every record gets
+// the parser's full key set back so nothing downstream meets `undefined`
+const { PL_COLS } = require('./pianolog-parse.cjs');
+const PL_KEYS = Object.keys(PL_COLS).concat(['subsection', 'owner_name']);
+function inflate(m) {
+  if (m && m.compact && Array.isArray(m.rows)) {
+    for (const p of m.rows) for (const k of PL_KEYS) if (!(k in p)) p[k] = '';
+  }
+  return m;
+}
+
 /** {rows, sections, last_sync} in the app's own record shape; rows=[] when the mirror is empty. */
-const readPianos = () => rpc('pianolog_read', { p_shape: 'pl', p_active_only: false }, 10000);
+const readPianos = () => rpc('pianolog_read', { p_shape: 'pl', p_active_only: false }, 10000).then(inflate);
 
 /** meta: sections, app_access (the App Access roster rows), last_sync. */
 const readMeta = () => rpc('pianolog_read', { p_shape: 'meta', p_active_only: false }, 6000);

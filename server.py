@@ -432,6 +432,16 @@ def fetch_mirror():
         m = json.loads(r.read())
     if not m.get('rows'):
         raise RuntimeError('mirror is empty')
+    if m.get('compact'):  # the RPC drops empty-string fields; restore the full key set
+        keys = ['updated_at', 'owner', 'serial', 'summary', 'year', 'make', 'model', 'size', 'published', 'category',
+                'finish', 'sheen', 'trim', 'before_photos_hold', 'before_photos', 'before_video', 'after_photos',
+                'after_video', 'status', 'bench', 'location_status', 'entry_exit_dates', 'receiving_exiting',
+                'project_category', 'cogs_invoice', 'agreements_price', 'notes', 'completion_date', 'isolved_job',
+                'qbo', 'tags', 'down_payment_date', 'milestones', 'warranty', 'new_piano_warranty_registered',
+                'qrs_warranty_registered', 'warranty_sent_to_customer', 'current_phase', 'track', 'subsection', 'owner_name']
+        for p in m['rows']:
+            for k in keys:
+                p.setdefault(k, '')
     data = {'generated_at': (m.get('last_sync') or {}).get('at', ''),
             'source': 'Piano Log & Inventory — first tab (Piano Log), via read mirror',
             'sections': m.get('sections') or [], 'pianos': m['rows'], 'mirror': True}
