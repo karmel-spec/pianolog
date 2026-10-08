@@ -26,20 +26,11 @@ exports.handler = async (event) => {
   catch (e) { return json(400, { error: 'bad request body' }); }
 
   try {
-    // positions must be current: the mirror copy when it was synced within
-    // the last 4 min (every app write re-syncs it), else a fresh bridge read
-    let data = null;
-    if (mirror.configured()) {
-      try {
-        const m = await mirror.readPianos();
-        const age = m && m.last_sync && m.last_sync.at ? Date.now() - Date.parse(m.last_sync.at) : Infinity;
-        if (m && m.rows && m.rows.length && age < 4 * 60000) data = { pianos: m.rows, sections: m.sections || [] };
-      } catch (e) { /* bridge below */ }
-    }
-    if (!data) {
-      const raw = await getTabValues('Piano Log', true);  // force fresh: positions must be current
-      data = parse(raw.values || []);
-    }
+    // positions must be current: always a fresh bridge read here (a move a
+    // few seconds earlier may not be in the mirror yet — 10/7 test: a revert
+    // read the mirror's old position and did nothing)
+    const raw = await getTabValues('Piano Log', true);
+    const data = parse(raw.values || []);
     const target = String(body.serial || '').trim();
     if (!target) return json(409, { error: 'this entry has no serial number — add one in the sheet first' });
     const matches = data.pianos.filter(p => p.serial.trim() === target);
