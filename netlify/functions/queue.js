@@ -7,6 +7,7 @@
 const { getSession, effectiveRole, unauthorized } = require('./lib/auth');
 const { getTabValues, postAppsScript, clearTabCache } = require('./lib/sheets');
 const { parse } = require('./lib/parse');
+const mirror = require('./lib/mirror');
 
 const json = (statusCode, obj) => ({
   statusCode,
@@ -25,8 +26,20 @@ exports.handler = async (event) => {
   catch (e) { return json(400, { error: 'bad request body' }); }
 
   try {
-    const raw = await getTabValues('Piano Log', true);  // force fresh: positions must be current
-    const data = parse(raw.values || []);
+    // positions must be current: the mirror copy when it was synced within
+    // the last 4 min (every app write re-syncs it), else a fresh bridge read
+    let data = null;
+    if (mirror.configured()) {
+      try {
+        const m = await mirror.readPianos();
+        const age = m && m.last_sync && m.last_sync.at ? Date.now() - Date.parse(m.last_sync.at) : Infinity;
+        if (m && m.rows && m.rows.length && age < 4 * 60000) data = { pianos: m.rows, sections: m.sections || [] };
+      } catch (e) { /* bridge below */ }
+    }
+    if (!data) {
+      const raw = await getTabValues('Piano Log', true);  // force fresh: positions must be current
+      data = parse(raw.values || []);
+    }
     const target = String(body.serial || '').trim();
     if (!target) return json(409, { error: 'this entry has no serial number — add one in the sheet first' });
     const matches = data.pianos.filter(p => p.serial.trim() === target);
@@ -52,6 +65,7 @@ exports.handler = async (event) => {
     });
     if (res.error) return json(409, { error: res.error });
     clearTabCache('Piano Log');
+    await mirror.triggerSync('pianolog-queue');   // row order changed → re-sync the mirror now
     return json(200, { ok: true, moved: true, queue_pos: newPos, queue_total: total, section: p.section });
   } catch (e) {
     return json(502, { error: String(e.message || e) });

@@ -5,6 +5,7 @@
 // current phase — enforced again in the bridge); admins edit everything.
 const { getSession, effectiveRole, unauthorized } = require('./lib/auth');
 const { postAppsScript, clearTabCache } = require('./lib/sheets');
+const mirror = require('./lib/mirror');
 
 const json = (statusCode, obj) => ({
   statusCode,
@@ -37,6 +38,10 @@ exports.handler = async (event) => {
     });
     if (data.error) return json(409, { error: data.error });
     clearTabCache('Piano Log');  // next read must see the new values
+    // read mirror (10/7): show the edit at once, then re-sync from the sheet
+    const serialEdit = (body.edits || []).find(e => e.field === 'serial');
+    await mirror.patchAfterUpdate(body.serial, (body.edits || []).filter(e => e.field !== 'serial'));
+    await mirror.triggerSync(serialEdit ? 'pianolog-serial-edit' : 'pianolog-update');
     return json(200, data);
   } catch (e) {
     return json(502, { error: String(e.message || e) });

@@ -8,6 +8,7 @@
 // row Blocked locks that account out within the sheet cache TTL (~5 min).
 const crypto = require('crypto');
 const { getTabValues } = require('./sheets');
+const mirror = require('./mirror');
 
 const MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 const GOOGLE_CLIENT_ID =
@@ -49,7 +50,17 @@ function normalizeRosterRole(s) {
 
 /** email(lowercase) -> 'admin' | 'tech' | 'blocked', from the App Access tab. */
 async function rosterRoles() {
-  const values = (await getTabValues(ROSTER_TAB)).values || [];
+  // read mirror (10/7): the sync copies the App Access tab into Supabase
+  // meta every ≤3 min, so a role check costs ~0.1 s instead of a 3–30 s
+  // bridge call on a cold instance. Bridge when the mirror has no copy.
+  let values = null;
+  if (mirror.configured()) {
+    try {
+      const meta = await mirror.readMeta();
+      if (meta && Array.isArray(meta.app_access) && meta.app_access.length) values = meta.app_access;
+    } catch (e) { /* bridge below */ }
+  }
+  if (!values) values = (await getTabValues(ROSTER_TAB)).values || [];
   const roles = {};
   for (const row of values) {
     const email = String(row[0] || '').trim().toLowerCase();

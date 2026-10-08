@@ -404,7 +404,46 @@ def apply_owner_overlay(data):
             n += 1
     data['qb_matched'] = n
 
+# read mirror (10/7): the Supabase copy of the sheet, same record shape (the
+# sync runs the shared JS parser). Service key from data/deploy-secrets.txt
+# (SUPABASE_SERVICE_KEY=…) or the env. Falls back to the gog sheet read.
+def _mirror_key():
+    key = os.environ.get('SUPABASE_SERVICE_KEY', '').strip()
+    if key:
+        return key
+    try:
+        with open(os.path.join(DIR, 'data', 'deploy-secrets.txt')) as f:
+            for line in f:
+                if line.startswith('SUPABASE_SERVICE_KEY='):
+                    return line.split('=', 1)[1].strip()
+    except OSError:
+        pass
+    return ''
+
+def fetch_mirror():
+    key = _mirror_key()
+    if not key:
+        raise RuntimeError('mirror not configured')
+    import urllib.request
+    url = os.environ.get('SUPABASE_URL', 'https://ismacawxfvvllfinibbf.supabase.co').rstrip('/') + '/rest/v1/rpc/pianolog_read'
+    req = urllib.request.Request(url, data=json.dumps({'p_shape': 'pl', 'p_active_only': False}).encode(),
+                                 headers={'apikey': key, 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        m = json.loads(r.read())
+    if not m.get('rows'):
+        raise RuntimeError('mirror is empty')
+    data = {'generated_at': (m.get('last_sync') or {}).get('at', ''),
+            'source': 'Piano Log & Inventory — first tab (Piano Log), via read mirror',
+            'sections': m.get('sections') or [], 'pianos': m['rows'], 'mirror': True}
+    apply_owner_overlay(data)
+    data['live'] = True
+    return data
+
 def fetch_live():
+    try:
+        return fetch_mirror()
+    except Exception as e:  # mirror down/empty → the sheet itself
+        print('mirror unavailable, reading the sheet:', e)
     r = subprocess.run(
         ['gog', '-a', ACCOUNT, '--json', 'sheets', 'get', SHEET_ID, RANGE],
         capture_output=True, text=True, timeout=60)

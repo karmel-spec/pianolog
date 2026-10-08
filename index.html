@@ -463,6 +463,46 @@ $('#training-grid').innerHTML = TRAINING_ITEMS.map(t => `
     </div>
   </div>`).join('');
 
+/* live refresh (10/7): the Supabase read mirror announces every change
+   (a sync that found sheet edits, or another device's save) on the public
+   pianolog_changes table — a plain realtime websocket, no library. When one
+   lands, the list reloads from the mirror (≈0.3 s) unless an edit drawer is
+   open. Falls back to nothing: the manual refresh button still works. */
+const SB_URL = 'https://ismacawxfvvllfinibbf.supabase.co';
+const SB_KEY = 'sb_publishable_MamcjSX0CHTdYlpKDWSkmQ_-nbuQ1z-';   // publishable: read-only ping table via RLS
+const liveRT = {ws: null, timer: null, ref: 0, backoff: 2000, pending: null};
+function liveRefresh(){
+  clearTimeout(liveRT.pending);
+  liveRT.pending = setTimeout(() => {
+    if ($('#drawer').classList.contains('open')) { liveRefresh(); return; }   // never yank a form mid-edit
+    if (!DATA || document.hidden) return;
+    const keep = $('#meta-note').textContent;
+    fetch('/api/pianos').then(r => r.ok ? r.json() : null).then(d => { if (d && d.pianos) { DATA = d; init(); } })
+      .catch(() => { $('#meta-note').textContent = keep; });
+  }, 1200);
+}
+function liveRealtime(){
+  if (liveRT.ws || !('WebSocket' in window)) return;
+  try {
+    const ws = new WebSocket(SB_URL.replace('https', 'wss') + '/realtime/v1/websocket?apikey=' + SB_KEY + '&vsn=1.0.0');
+    liveRT.ws = ws;
+    ws.onopen = () => {
+      liveRT.backoff = 2000;
+      ws.send(JSON.stringify({topic: 'realtime:pianolog', event: 'phx_join', ref: String(++liveRT.ref),
+        payload: {config: {postgres_changes: [{event: 'INSERT', schema: 'public', table: 'pianolog_changes'}]}}}));
+      clearInterval(liveRT.timer);
+      liveRT.timer = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({topic: 'phoenix', event: 'heartbeat', ref: String(++liveRT.ref), payload: {}})); }, 25000);
+    };
+    ws.onmessage = ev => { try { if (JSON.parse(ev.data).event === 'postgres_changes') liveRefresh(); } catch (e) {} };
+    ws.onclose = ws.onerror = () => {
+      clearInterval(liveRT.timer);
+      if (liveRT.ws === ws) liveRT.ws = null;
+      setTimeout(liveRealtime, liveRT.backoff = Math.min(liveRT.backoff * 2, 60000));
+    };
+  } catch (e) { liveRT.ws = null; }
+}
+liveRealtime();
+
 function loadData(force){
   const note = $('#meta-note');
   note.textContent = force ? 'Refreshing from Google Sheets…' : 'Loading…';
