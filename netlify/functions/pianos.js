@@ -29,11 +29,25 @@ const generatedAt = (d) => new Date(d || Date.now()).toLocaleString('en-US', {
  * blpsalesapp to re-sync the mirror from the sheet right away; the save path
  * has already patched the mirror row, so the reload shows the edit at once.
  */
+// per-instance copy keyed by the mirror's version (newest row change): a
+// repeat read on a warm instance costs one small meta call (~0.1 s) instead
+// of the 3.6 MB pianos read, and never serves a version the mirror has
+// moved past (every sync and every optimistic patch bumps it)
+let mirrorCache = { version: null, m: null };
+async function readMirrorCached() {
+  let version = null;
+  try { version = ((await mirror.readMeta()) || {}).version || null; } catch (e) { /* full read below */ }
+  if (version && mirrorCache.m && mirrorCache.version === version) return mirrorCache.m;
+  const m = await mirror.readPianos();
+  if (m && m.rows && m.rows.length && m.version) mirrorCache = { version: m.version, m };
+  return m;
+}
+
 async function loadData(force) {
   if (mirror.configured()) {
     try {
       if (force) await mirror.triggerSync('pianolog-refresh');
-      const m = await mirror.readPianos();
+      const m = await readMirrorCached();
       if (m && m.rows && m.rows.length) {
         return {
           generated_at: generatedAt(m.last_sync && m.last_sync.at),
@@ -66,9 +80,13 @@ exports.handler = async (event) => {
     data.role = role;
     data.read_ms = Date.now() - t0;
     if (role === 'tech') {
-      for (const p of data.pianos) {
-        for (const f of TECH_HIDDEN_FIELDS) delete p[f];
-      }
+      // copies, never the cached objects: a tech read must not strip the
+      // instance's shared copy that the next admin read would serve
+      data.pianos = data.pianos.map(p => {
+        const c = { ...p };
+        for (const f of TECH_HIDDEN_FIELDS) delete c[f];
+        return c;
+      });
     }
     return {
       statusCode: 200,
